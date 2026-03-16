@@ -582,7 +582,7 @@ app.get('/spotify/search', rateLimit, async (req, res) => {
     url.searchParams.set('limit', String(limit));
 
     const data = await fetchSpotifyJson(accessToken, url.toString());
-    const albums = (data.albums?.items || []).map((album) => ({
+    const mappedAlbums = (data.albums?.items || []).map((album) => ({
       id: album.id,
       name: album.name,
       artists: album.artists?.map((artist) => artist.name) || [],
@@ -590,6 +590,25 @@ app.get('/spotify/search', rateLimit, async (req, res) => {
       release_date: album.release_date,
       total_tracks: album.total_tracks,
     }));
+    const albums = [];
+    const seen = new Map();
+    mappedAlbums.forEach((album) => {
+      if (!album) {
+        return;
+      }
+      const nameKey = (album.name || '').trim().toLowerCase();
+      const artistKey = (album.artists?.[0] || '').trim().toLowerCase();
+      const key = `${nameKey}|${artistKey}`;
+      const existingIndex = seen.get(key);
+      if (typeof existingIndex !== 'number') {
+        seen.set(key, albums.length);
+        albums.push(album);
+        return;
+      }
+      if (!albums[existingIndex].image && album.image) {
+        albums[existingIndex] = album;
+      }
+    });
 
     const payload = { albums };
     setCached(searchCache, cacheId, payload, searchCacheTtlMs);
@@ -678,14 +697,45 @@ app.get('/spotify/albums/:id', rateLimit, async (req, res) => {
     const cacheId = `${cacheKey}:album:${albumId}`;
     const cached = getCached(albumCache, cacheId);
     if (cached) {
-      res.set('X-Cache', 'HIT');
-      return res.json(cached);
+      const cachedAlbum = cached.album;
+      const hasTracks =
+        Array.isArray(cachedAlbum?.tracks) && cachedAlbum.tracks.length > 0;
+      if (!hasTracks) {
+        // Ignore summary caches without track data.
+      } else {
+        res.set('X-Cache', 'HIT');
+        return res.json(cached);
+      }
     }
 
     const data = await fetchSpotifyJson(
       accessToken,
       `https://api.spotify.com/v1/albums/${albumId}`
     );
+
+    let genres = Array.isArray(data.genres) ? data.genres : [];
+    if (genres.length === 0 && Array.isArray(data.artists) && data.artists.length > 0) {
+      const artistIds = data.artists
+        .map((artist) => artist?.id)
+        .filter(Boolean)
+        .slice(0, 5);
+      if (artistIds.length > 0) {
+        try {
+          const artistData = await fetchSpotifyJson(
+            accessToken,
+            `https://api.spotify.com/v1/artists?ids=${artistIds.join(',')}`
+          );
+          const artistGenres = (artistData.artists || [])
+            .flatMap((artist) => artist.genres || [])
+            .filter((genre) => typeof genre === 'string');
+          if (artistGenres.length > 0) {
+            genres = Array.from(new Set(artistGenres)).slice(0, 6);
+          }
+        } catch (err) {
+          // ignore artist genre failures and fall back to album genres
+        }
+      }
+    }
 
     const album = {
       id: data.id,
@@ -695,7 +745,7 @@ app.get('/spotify/albums/:id', rateLimit, async (req, res) => {
       release_date: data.release_date,
       total_tracks: data.total_tracks,
       label: data.label,
-      genres: data.genres || [],
+      genres,
       tracks: data.tracks?.items?.map((track) => ({
         id: track.id,
         name: track.name,
@@ -873,7 +923,7 @@ app.patch('/reviews/:id', requireAuth, async (req, res) => {
         [req.user.sub]
       );
       const pinnedCount = parseInt(pinnedCountResult.rows[0]?.count || '0', 10);
-      if (pinnedCount >= 3) {
+      if (pinnedCount >= 1) {
         return res.status(400).json({ error: 'pinned_limit' });
       }
       updates.push(`is_pinned = $${values.length + 1}`);

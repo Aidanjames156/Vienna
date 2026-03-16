@@ -127,20 +127,19 @@ export default function ProfilePage() {
       .filter((genre) => genre.length > 0);
   }, [genresInput]);
 
-  const pinnedReviews = useMemo(() => {
-    return reviews
-      .filter((review) => review.is_pinned)
-      .sort((a, b) => {
-        const aTime = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
-        const bTime = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
-        return bTime - aTime;
-      })
-      .slice(0, 3);
+  const pinnedReview = useMemo(() => {
+    return (
+      reviews
+        .filter((review) => review.is_pinned)
+        .sort((a, b) => {
+          const aTime = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+          const bTime = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+          return bTime - aTime;
+        })[0] || null
+    );
   }, [reviews]);
 
-  const recentReviews = useMemo(() => {
-    return reviews.filter((review) => !review.is_pinned);
-  }, [reviews]);
+  const recentReviews = useMemo(() => reviews, [reviews]);
 
   const avatarInitial = (
     displayName || user?.spotify_id || "J"
@@ -764,7 +763,7 @@ export default function ProfilePage() {
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         if (data?.error === "pinned_limit") {
-          setReviewActionError("You can only pin up to 3 reviews.");
+          setReviewActionError("You can only pin 1 review.");
           return;
         }
         setReviewActionError("Could not update pinned reviews.");
@@ -976,6 +975,52 @@ export default function ProfilePage() {
                 </span>
               </div>
             </div>
+            {pinnedReview ? (
+              <div className="mt-5 border border-[color:var(--border)] p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                  Pinned review
+                </p>
+                <div className="mt-3 flex items-start gap-4">
+                  <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
+                    {albumMap[pinnedReview.spotify_album_id]?.image ? (
+                      <img
+                        src={albumMap[pinnedReview.spotify_album_id].image}
+                        alt={`${albumMap[pinnedReview.spotify_album_id].name} cover`}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                        No art
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <Link
+                      href={`/albums/${pinnedReview.spotify_album_id}`}
+                      className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--accent)]"
+                    >
+                      {albumMap[pinnedReview.spotify_album_id]?.name || "Album"}
+                    </Link>
+                    <p className="text-xs text-[var(--muted)]">
+                      {albumMap[pinnedReview.spotify_album_id]?.artists?.join(", ") ||
+                        pinnedReview.spotify_album_id}
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">
+                      Rating {pinnedReview.rating}/10
+                    </p>
+                    {pinnedReview.body && (
+                      <p className="text-xs text-[var(--muted)]">
+                        {pinnedReview.body}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 border border-[color:var(--border)] p-4 text-xs text-[var(--muted)]">
+                Pin a review to feature it here.
+              </div>
+            )}
           </section>
         )}
 
@@ -1699,96 +1744,6 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {!loading && reviews.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-[var(--foreground)]">
-                    Pinned reviews
-                  </h3>
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Up to 3
-                  </span>
-                </div>
-                {pinnedReviews.length === 0 && (
-                  <div className="border border-[color:var(--border)] p-4 text-sm text-[var(--muted)]">
-                    Pin your favorite reviews to show them first.
-                  </div>
-                )}
-                <div className="space-y-4">
-                  {pinnedReviews.map((review) => {
-                    const album = albumMap[review.spotify_album_id];
-                    return (
-                      <div
-                        key={`pinned-${review.id}`}
-                        className="flex flex-col gap-4 border border-[color:var(--border)] p-5 md:flex-row md:items-start"
-                      >
-                        <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                          {album?.image ? (
-                            <img
-                              src={album.image}
-                              alt={`${album.name} cover`}
-                              className="absolute inset-0 h-full w-full object-cover"
-                            />
-                          ) : null}
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">
-                                {album?.name || "Album"}
-                              </p>
-                              <p className="text-xs text-[var(--muted)]">
-                                {album?.artists?.join(", ") ||
-                                  review.spotify_album_id}
-                              </p>
-                            </div>
-                            <span className="text-xs text-[var(--muted)]">
-                              {formatDate(review.created_at)}
-                            </span>
-                          </div>
-                          <div className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">
-                            Rating {review.rating}/10
-                          </div>
-                          {review.body && (
-                            <p className="text-sm text-[var(--foreground)]">
-                              {review.body}
-                            </p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-[0.3em] text-[var(--muted)]">
-                            <button
-                              type="button"
-                              className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)]"
-                              onClick={() => startEditReview(review)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-                              onClick={() => handleReviewPin(review.id, false)}
-                              disabled={reviewPinning === review.id}
-                            >
-                              {reviewPinning === review.id ? "Saving..." : "Unpin"}
-                            </button>
-                            <button
-                              type="button"
-                              className="border border-red-500/40 px-3 py-2 text-red-200 transition hover:border-red-500"
-                              onClick={() => handleReviewDelete(review.id)}
-                              disabled={reviewDeleting === review.id}
-                            >
-                              {reviewDeleting === review.id
-                                ? "Deleting..."
-                                : "Delete"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             <div className="space-y-4">
               {recentReviews.map((review) => {
                 const album = albumMap[review.spotify_album_id];
@@ -1889,10 +1844,16 @@ export default function ProfilePage() {
                             <button
                               type="button"
                               className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-                              onClick={() => handleReviewPin(review.id, true)}
+                              onClick={() =>
+                                handleReviewPin(review.id, !review.is_pinned)
+                              }
                               disabled={reviewPinning === review.id}
                             >
-                              {reviewPinning === review.id ? "Saving..." : "Pin"}
+                              {reviewPinning === review.id
+                                ? "Saving..."
+                                : review.is_pinned
+                                ? "Unpin"
+                                : "Pin"}
                             </button>
                             <button
                               type="button"

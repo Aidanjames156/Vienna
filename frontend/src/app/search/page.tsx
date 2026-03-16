@@ -19,33 +19,13 @@ type AlbumSummary = {
   total_tracks: number;
 };
 
-type AlbumDetail = {
-  id: string;
-  name: string;
-  artists: string[];
-  images: { url: string; width: number; height: number }[];
-  release_date: string;
-  total_tracks: number;
-  label: string;
-  genres: string[];
-  tracks: {
-    id: string;
-    name: string;
-    track_number: number;
-    duration_ms: number;
-    preview_url: string | null;
-  }[];
-};
-
 export default function SearchPage() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:4000";
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AlbumSummary[]>([]);
-  const [selected, setSelected] = useState<AlbumDetail | null>(null);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [loadingAlbum, setLoadingAlbum] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canSearch = useMemo(() => query.trim().length > 1, [query]);
@@ -80,7 +60,6 @@ export default function SearchPage() {
   async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setSelected(null);
 
     if (!canSearch) {
       setResults([]);
@@ -104,32 +83,6 @@ export default function SearchPage() {
       setError("Search failed. Try again.");
     } finally {
       setLoadingSearch(false);
-    }
-  }
-
-  async function handleSelect(albumId: string) {
-    setError(null);
-    setLoadingAlbum(true);
-    try {
-      const response = await fetch(`${apiUrl}/spotify/albums/${albumId}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        setError("Could not load album details.");
-        setSelected(null);
-        return;
-      }
-      const data = await response.json();
-      if (!data.album) {
-        setError("Album details unavailable.");
-        setSelected(null);
-        return;
-      }
-      setSelected(data.album);
-    } catch (err) {
-      setError("Could not load album details.");
-    } finally {
-      setLoadingAlbum(false);
     }
   }
 
@@ -253,7 +206,7 @@ export default function SearchPage() {
           </div>
         )}
 
-        <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
+        <div className="grid gap-6">
           <section className="space-y-4">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
               Results
@@ -263,14 +216,13 @@ export default function SearchPage() {
                 Start by searching for an album.
               </p>
             )}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {results.map((album) => (
-                <div key={album.id} className="group">
-                  <button
-                    className="flex w-full flex-col items-start gap-3 text-left"
-                    onClick={() => handleSelect(album.id)}
-                    type="button"
-                  >
+                <Link
+                  key={album.id}
+                  href={`/albums/${album.id}`}
+                  className="group flex flex-col items-start gap-3 text-left"
+                >
                     <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
                       {album.image ? (
                         <img
@@ -291,92 +243,11 @@ export default function SearchPage() {
                         <span>
                           {album.release_date} • {album.total_tracks} tracks
                         </span>
-                        <Link
-                          className="text-[var(--accent-strong)] hover:text-[var(--accent)]"
-                          href={`/albums/${album.id}`}
-                        >
-                          Open
-                        </Link>
                       </div>
                     </div>
-                  </button>
-                </div>
+                </Link>
               ))}
             </div>
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Album Details
-            </h2>
-            {loadingAlbum && (
-              <p className="text-sm text-[var(--muted)]">Loading details...</p>
-            )}
-            {!loadingAlbum && !selected && (
-              <p className="text-sm text-[var(--muted)]">
-                Select an album to see track details.
-              </p>
-            )}
-            {selected && (
-              <div className="space-y-4 border border-[color:var(--border)] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="h-24 w-24 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                    {selected.images?.[0]?.url ? (
-                      <img
-                        src={selected.images[0].url}
-                        alt={`${selected.name} cover`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div>
-                    <p className="text-lg font-semibold text-[var(--foreground)]">
-                      {selected.name}
-                    </p>
-                    <p className="text-sm text-[var(--muted)]">
-                      {selected.artists.join(", ")}
-                    </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {selected.release_date} • {selected.total_tracks} tracks
-                    </p>
-                    {selected.label && (
-                      <p className="text-xs text-[var(--muted)]">
-                        Label: {selected.label}
-                      </p>
-                    )}
-                    {selected.genres?.length > 0 && (
-                      <p className="text-xs text-[var(--muted)]">
-                        Genres: {selected.genres.join(", ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="max-h-64 space-y-2 overflow-y-auto pr-2">
-                  {(selected.tracks || []).map((track) => (
-                    <div
-                      key={track.id}
-                      className="flex items-center justify-between border-b border-[color:var(--border)] py-2 text-xs text-[var(--muted)]"
-                    >
-                      <span>
-                        {track.track_number}. {track.name}
-                      </span>
-                      {track.preview_url ? (
-                        <a
-                          className="text-[var(--accent-strong)] hover:text-[var(--accent)]"
-                          href={track.preview_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Preview
-                        </a>
-                      ) : (
-                        <span className="text-zinc-600">No preview</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </section>
         </div>
       </main>

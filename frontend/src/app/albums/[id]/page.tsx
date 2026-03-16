@@ -72,6 +72,16 @@ export default function AlbumPage() {
     return (total / reviews.length).toFixed(1);
   }, [reviews]);
 
+  const ratingDistribution = useMemo(() => {
+    const buckets = Array.from({ length: 10 }, () => 0);
+    reviews.forEach((review) => {
+      if (review.rating >= 1 && review.rating <= 10) {
+        buckets[review.rating - 1] += 1;
+      }
+    });
+    return buckets;
+  }, [reviews]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -338,7 +348,7 @@ export default function AlbumPage() {
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         if (data?.error === "pinned_limit") {
-          setReviewActionError("You can only pin up to 3 reviews.");
+          setReviewActionError("You can only pin 1 review.");
           return;
         }
         setReviewActionError("Could not update pinned reviews.");
@@ -393,6 +403,12 @@ export default function AlbumPage() {
               </div>
             </div>
             <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
+              <Link
+                href="/"
+                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
+              >
+                Home
+              </Link>
               <Link
                 href="/search"
                 className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
@@ -458,7 +474,7 @@ export default function AlbumPage() {
                   />
                 ) : null}
               </div>
-              <div className="space-y-1 text-xs text-[var(--muted)]">
+              <div className="space-y-1 text-sm text-[var(--muted)]">
                 <p>Release: {album.release_date}</p>
                 <p>Tracks: {album.total_tracks}</p>
                 {album.label && <p>Label: {album.label}</p>}
@@ -476,6 +492,52 @@ export default function AlbumPage() {
                 <p className="text-sm text-[var(--muted)]">
                   {album.artists.join(", ")}
                 </p>
+              </div>
+
+              <div className="border border-[color:var(--border)] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                    Ratings
+                  </p>
+                  <span className="text-xs text-[var(--muted)]">
+                    {reviews.length} rating{reviews.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {reviews.length === 0 ? (
+                  <p className="mt-3 text-sm text-[var(--muted)]">
+                    No ratings yet.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-3 text-3xl font-semibold text-[var(--foreground)]">
+                      {averageRating}
+                    </p>
+                    <div className="mt-3 space-y-1">
+                      {Array.from({ length: 10 }, (_, idx) => 10 - idx).map(
+                        (score) => {
+                          const count = ratingDistribution[score - 1] || 0;
+                          const maxCount = Math.max(...ratingDistribution, 1);
+                          const width = `${(count / maxCount) * 100}%`;
+                          return (
+                            <div
+                              key={score}
+                              className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[var(--muted-strong)]"
+                            >
+                              <span className="w-4 text-right">{score}</span>
+                              <div className="h-1.5 flex-1 bg-[color:var(--border)]">
+                                <div
+                                  className="h-full bg-[var(--accent)]"
+                                  style={{ width }}
+                                />
+                              </div>
+                              <span className="w-6 text-right">{count}</span>
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="space-y-2">
