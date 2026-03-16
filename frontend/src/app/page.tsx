@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type User = {
   id: number;
@@ -10,45 +10,10 @@ type User = {
   display_name: string | null;
 };
 
-type AlbumSummary = {
-  id: string;
-  name: string;
-  artists: string[];
-  image: string | null;
-  release_date: string;
-  total_tracks: number;
-};
-
-type AlbumDetail = {
-  id: string;
-  name: string;
-  artists: string[];
-  images: { url: string; width: number; height: number }[];
-  release_date: string;
-  total_tracks: number;
-  label: string;
-  genres: string[];
-  tracks: {
-    id: string;
-    name: string;
-    track_number: number;
-    duration_ms: number;
-    preview_url: string | null;
-  }[];
-};
-
 export default function Home() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:4000";
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AlbumSummary[]>([]);
-  const [selected, setSelected] = useState<AlbumDetail | null>(null);
-  const [loadingSearch, setLoadingSearch] = useState(false);
-  const [loadingAlbum, setLoadingAlbum] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const canSearch = useMemo(() => query.trim().length > 1, [query]);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,62 +42,6 @@ export default function Home() {
     };
   }, [apiUrl]);
 
-  async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSelected(null);
-
-    if (!canSearch) {
-      setResults([]);
-      return;
-    }
-
-    setLoadingSearch(true);
-    try {
-      const response = await fetch(
-        `${apiUrl}/spotify/search?query=${encodeURIComponent(query.trim())}`,
-        { credentials: "include" }
-      );
-      if (!response.ok) {
-        setError("Search failed. Try again.");
-        setResults([]);
-        return;
-      }
-      const data = await response.json();
-      setResults(data.albums || []);
-    } catch (err) {
-      setError("Search failed. Try again.");
-    } finally {
-      setLoadingSearch(false);
-    }
-  }
-
-  async function handleSelect(albumId: string) {
-    setError(null);
-    setLoadingAlbum(true);
-    try {
-      const response = await fetch(`${apiUrl}/spotify/albums/${albumId}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        setError("Could not load album details.");
-        setSelected(null);
-        return;
-      }
-      const data = await response.json();
-      if (!data.album) {
-        setError("Album details unavailable.");
-        setSelected(null);
-        return;
-      }
-      setSelected(data.album);
-    } catch (err) {
-      setError("Could not load album details.");
-    } finally {
-      setLoadingAlbum(false);
-    }
-  }
-
   async function handleLogout() {
     await fetch(`${apiUrl}/auth/logout`, {
       method: "POST",
@@ -142,10 +51,11 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-10 text-[color:var(--foreground)]">
-      <main className="mx-auto w-full max-w-6xl space-y-10">
-        <header className="flex flex-col gap-6 border-b border-[color:var(--border)] pb-6">
-          <div className="flex flex-wrap items-center justify-between gap-6">
+    <div className="min-h-screen text-[color:var(--foreground)]">
+      <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,197,94,0.18),_rgba(8,10,12,0.9)_55%)]">
+        <div className="pointer-events-none absolute left-0 top-0 h-full w-full bg-[linear-gradient(135deg,_rgba(255,255,255,0.04),_transparent_40%)]" />
+        <header className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-6 border-b border-[color:var(--border)] pb-6">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-none bg-[color:var(--accent)] text-lg font-bold text-[#0a140c]">
                 J
@@ -161,8 +71,14 @@ export default function Home() {
             </div>
             <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
               <span className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)]">
-                Search
+                Home
               </span>
+              <Link
+                href="/search"
+                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
+              >
+                Search
+              </Link>
               <Link
                 href="/profile"
                 className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
@@ -201,178 +117,107 @@ export default function Home() {
               )}
             </div>
           </div>
-          <div className="grid gap-6 md:grid-cols-[1.4fr_1fr]">
-            <div className="space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                Rate and review the albums you love.
+
+          <div className="grid gap-8 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-4">
+              <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted-strong)]">
+                Your listening ledger
+              </p>
+              <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
+                Track, rate, and review the albums you live for.
               </h1>
-              <p className="text-[var(--muted)]">
-                Log listens, write reviews, and build your personal canon.
+              <p className="max-w-xl text-sm text-[var(--muted)]">
+                Build a living diary of the records that shaped your year. Save
+                ratings, write reviews, and curate ranked lists that say more
+                than a playlist ever could.
               </p>
+              <div className="flex flex-wrap items-center gap-3">
+                {!user && (
+                  <a
+                    className="rounded-none bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
+                    href={`${apiUrl}/auth/spotify`}
+                  >
+                    Continue with Spotify
+                  </a>
+                )}
+                <Link
+                  className="rounded-none border border-[color:var(--border)] px-6 py-3 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)]"
+                  href="/search"
+                >
+                  Explore albums
+                </Link>
+              </div>
             </div>
-            <div className="border border-[color:var(--border)] p-4 text-sm text-[var(--muted)]">
-              <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                New
-              </p>
-              <p className="mt-2">
-                Search any Spotify album without signing in. Log in to rate and
-                review.
-              </p>
+            <div className="grid gap-4">
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5">
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                  Featured
+                </p>
+                <p className="mt-2 text-sm text-[var(--foreground)]">
+                  Jukebox works like a music Letterboxd. Log listens, pin your
+                  favorites, and show the world your top three.
+                </p>
+              </div>
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
+                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                  Discover
+                </p>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  Search Spotify without signing in. Log in when you are ready
+                  to rate and review.
+                </p>
+              </div>
             </div>
           </div>
         </header>
+      </div>
 
-        <form
-          onSubmit={handleSearch}
-          className="flex flex-col gap-3 border-b border-[color:var(--border)] pb-6 md:flex-row"
-        >
-          <input
-            className="flex-1 rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-5 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
-            placeholder="Search for an album or artist"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <button
-            type="submit"
-            className="rounded-none bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-            disabled={!canSearch || loadingSearch}
-          >
-            {loadingSearch ? "Searching..." : "Search"}
-          </button>
-        </form>
-
-        {error && (
-          <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {error}
-          </div>
-        )}
-
-        <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Results
-            </h2>
-            {results.length === 0 && (
-              <p className="text-sm text-[var(--muted)]">
-                Start by searching for an album.
+      <main className="mx-auto w-full max-w-6xl space-y-12 px-6 py-12">
+        <section className="grid gap-4 md:grid-cols-3">
+          {[
+            {
+              title: "Log your listens",
+              description:
+                "Rate albums from 1 to 10 and build a personal listening history.",
+            },
+            {
+              title: "Curate ranked lists",
+              description:
+                "Drag and drop to order your favorite records in ranked lists.",
+            },
+            {
+              title: "Pin your top reviews",
+              description:
+                "Showcase the reviews that define your taste on your profile.",
+            },
+          ].map((feature) => (
+            <div
+              key={feature.title}
+              className="border border-[color:var(--border)] bg-[color:var(--surface)] p-5"
+            >
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                {feature.title}
               </p>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((album) => (
-                <div key={album.id} className="group">
-                  <button
-                    className="flex w-full flex-col items-start gap-3 text-left"
-                    onClick={() => handleSelect(album.id)}
-                    type="button"
-                  >
-                    <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                      {album.image ? (
-                        <img
-                          src={album.image}
-                          alt={`${album.name} cover`}
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      ) : null}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--foreground)]">
-                        {album.name}
-                      </p>
-                      <p className="text-xs text-[var(--muted)]">
-                        {album.artists.join(", ")}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--muted-strong)]">
-                        <span>
-                          {album.release_date} • {album.total_tracks} tracks
-                        </span>
-                        <Link
-                          className="text-[var(--accent-strong)] hover:text-[var(--accent)]"
-                          href={`/albums/${album.id}`}
-                        >
-                          Open
-                        </Link>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              ))}
+              <p className="mt-3 text-sm text-[var(--muted)]">
+                {feature.description}
+              </p>
             </div>
-          </section>
+          ))}
+        </section>
 
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Album Details
-            </h2>
-            {loadingAlbum && (
-              <p className="text-sm text-[var(--muted)]">Loading details...</p>
-            )}
-            {!loadingAlbum && !selected && (
-              <p className="text-sm text-[var(--muted)]">
-                Select an album to see track details.
-              </p>
-            )}
-            {selected && (
-              <div className="space-y-4 border border-[color:var(--border)] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="h-24 w-24 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                    {selected.images?.[0]?.url ? (
-                      <img
-                        src={selected.images[0].url}
-                        alt={`${selected.name} cover`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div>
-                    <p className="text-lg font-semibold text-[var(--foreground)]">
-                      {selected.name}
-                    </p>
-                    <p className="text-sm text-[var(--muted)]">
-                      {selected.artists.join(", ")}
-                    </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {selected.release_date} • {selected.total_tracks} tracks
-                    </p>
-                    {selected.label && (
-                      <p className="text-xs text-[var(--muted)]">
-                        Label: {selected.label}
-                      </p>
-                    )}
-                    {selected.genres?.length > 0 && (
-                      <p className="text-xs text-[var(--muted)]">
-                        Genres: {selected.genres.join(", ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="max-h-64 space-y-2 overflow-y-auto pr-2">
-                  {(selected.tracks || []).map((track) => (
-                    <div
-                      key={track.id}
-                      className="flex items-center justify-between border-b border-[color:var(--border)] py-2 text-xs text-[var(--muted)]"
-                    >
-                      <span>
-                        {track.track_number}. {track.name}
-                      </span>
-                      {track.preview_url ? (
-                        <a
-                          className="text-[var(--accent-strong)] hover:text-[var(--accent)]"
-                          href={track.preview_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Preview
-                        </a>
-                      ) : (
-                        <span className="text-zinc-600">No preview</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        </div>
+        <section className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
+          Follow other listeners, trade recommendations, and build your music
+          canon together.
+        </section>
+
+        <section className="flex flex-wrap items-center justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-xs text-[var(--muted)]">
+          <span>Jukebox · Built for album people</span>
+          <div className="flex items-center gap-4 text-[10px] uppercase tracking-[0.3em]">
+            <span>About</span>
+            <span>Privacy</span>
+            <span>Support</span>
+          </div>
+        </section>
       </main>
     </div>
   );

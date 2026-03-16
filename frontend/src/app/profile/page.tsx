@@ -916,6 +916,12 @@ export default function ProfilePage() {
                 href="/"
                 className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
               >
+                Home
+              </Link>
+              <Link
+                href="/search"
+                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
+              >
                 Search
               </Link>
               <span className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)]">
@@ -923,7 +929,7 @@ export default function ProfilePage() {
               </span>
             </nav>
             <Link
-              href="/"
+              href="/search"
               className="inline-flex items-center justify-center rounded-none border border-[color:var(--border)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)]"
             >
               Back to search

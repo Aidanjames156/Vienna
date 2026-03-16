@@ -665,7 +665,7 @@ export default function ListPage() {
               Profile
             </Link>
             <Link
-              href="/"
+              href="/search"
               className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
             >
               Search

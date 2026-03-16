@@ -394,7 +394,7 @@ export default function AlbumPage() {
             </div>
             <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
               <Link
-                href="/"
+                href="/search"
                 className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
               >
                 Search
