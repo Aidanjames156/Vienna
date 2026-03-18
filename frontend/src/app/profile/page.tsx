@@ -32,6 +32,8 @@ type List = {
   description: string | null;
   created_at: string;
   is_ranked: boolean;
+  likes_count?: number;
+  liked_by_me?: boolean;
   items: ListItem[];
 };
 
@@ -1664,6 +1666,10 @@ export default function ProfilePage() {
                       <span className="text-xs text-[var(--muted)]">
                         {list.items.length} album
                         {list.items.length === 1 ? "" : "s"}
+                      </span>
+                      <span className="text-xs text-[var(--muted)]">
+                        {list.likes_count ?? 0} like
+                        {(list.likes_count ?? 0) === 1 ? "" : "s"}
                       </span>
                       <button
                         type="button"

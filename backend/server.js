@@ -1019,10 +1019,17 @@ app.get('/me/reviews', requireAuth, async (req, res) => {
 app.get('/me/lists', requireAuth, async (req, res) => {
   try {
     const listResult = await pool.query(
-      `SELECT id, title, description, is_ranked, created_at
-       FROM lists
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
+      `SELECT l.id, l.title, l.description, l.is_ranked, l.created_at,
+              COALESCE(COUNT(ll.user_id), 0) AS likes_count,
+              EXISTS (
+                SELECT 1 FROM list_likes ll2
+                WHERE ll2.list_id = l.id AND ll2.user_id = $1
+              ) AS liked_by_me
+       FROM lists l
+       LEFT JOIN list_likes ll ON ll.list_id = l.id
+       WHERE l.user_id = $1
+       GROUP BY l.id, l.title, l.description, l.is_ranked, l.created_at
+       ORDER BY l.created_at DESC`,
       [req.user.sub]
     );
 
@@ -1032,6 +1039,8 @@ app.get('/me/lists', requireAuth, async (req, res) => {
       description: row.description,
       is_ranked: row.is_ranked,
       created_at: row.created_at,
+      likes_count: parseInt(row.likes_count, 10) || 0,
+      liked_by_me: row.liked_by_me === true,
       items: [],
     }));
 
@@ -1328,6 +1337,186 @@ app.post('/lists/:id/reorder', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/lists/:id/like', requireAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+
+  if (!listId) {
+    return res.status(400).json({ error: 'list_id_required' });
+  }
+
+  try {
+    const listResult = await pool.query(
+      'SELECT id FROM lists WHERE id = $1',
+      [listId]
+    );
+
+    if (listResult.rows.length === 0) {
+      return res.status(404).json({ error: 'list_not_found' });
+    }
+
+    await pool.query(
+      `INSERT INTO list_likes (list_id, user_id)
+       VALUES ($1, $2)
+       ON CONFLICT (list_id, user_id) DO NOTHING`,
+      [listId, req.user.sub]
+    );
+
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM list_likes WHERE list_id = $1',
+      [listId]
+    );
+    const likesCount = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    return res.json({ status: 'ok', likes_count: likesCount, liked_by_me: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'list_like_failed' });
+  }
+});
+
+app.delete('/lists/:id/like', requireAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+
+  if (!listId) {
+    return res.status(400).json({ error: 'list_id_required' });
+  }
+
+  try {
+    const listResult = await pool.query(
+      'SELECT id FROM lists WHERE id = $1',
+      [listId]
+    );
+
+    if (listResult.rows.length === 0) {
+      return res.status(404).json({ error: 'list_not_found' });
+    }
+
+    await pool.query(
+      'DELETE FROM list_likes WHERE list_id = $1 AND user_id = $2',
+      [listId, req.user.sub]
+    );
+
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM list_likes WHERE list_id = $1',
+      [listId]
+    );
+    const likesCount = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    return res.json({ status: 'ok', likes_count: likesCount, liked_by_me: false });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'list_unlike_failed' });
+  }
+});
+
+app.get('/lists/:id/comments', requireAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  const limitRaw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+  const limit = Math.min(Math.max(parseInt(limitRaw || '50', 10), 1), 100);
+
+  if (!listId) {
+    return res.status(400).json({ error: 'list_id_required' });
+  }
+
+  try {
+    const listResult = await pool.query(
+      'SELECT id FROM lists WHERE id = $1 AND user_id = $2',
+      [listId, req.user.sub]
+    );
+
+    if (listResult.rows.length === 0) {
+      return res.status(404).json({ error: 'list_not_found' });
+    }
+
+    const commentResult = await pool.query(
+      `SELECT c.id, c.body, c.created_at,
+              u.id AS user_id, u.display_name, u.spotify_id, u.avatar_url
+       FROM list_comments c
+       JOIN users u ON u.id = c.user_id
+       WHERE c.list_id = $1
+       ORDER BY c.created_at DESC
+       LIMIT $2`,
+      [listId, limit]
+    );
+
+    const comments = commentResult.rows.map((row) => ({
+      id: row.id,
+      body: row.body,
+      created_at: row.created_at,
+      user: {
+        id: row.user_id,
+        display_name: row.display_name,
+        spotify_id: row.spotify_id,
+        avatar_url: row.avatar_url,
+      },
+    }));
+
+    return res.json({ comments });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'list_comments_fetch_failed' });
+  }
+});
+
+app.post('/lists/:id/comments', requireAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  const bodyRaw = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+  const body = bodyRaw.length > 0 ? bodyRaw : null;
+
+  if (!listId) {
+    return res.status(400).json({ error: 'list_id_required' });
+  }
+
+  if (!body) {
+    return res.status(400).json({ error: 'comment_required' });
+  }
+
+  if (body.length > 1000) {
+    return res.status(400).json({ error: 'comment_too_long' });
+  }
+
+  try {
+    const listResult = await pool.query(
+      'SELECT id FROM lists WHERE id = $1 AND user_id = $2',
+      [listId, req.user.sub]
+    );
+
+    if (listResult.rows.length === 0) {
+      return res.status(404).json({ error: 'list_not_found' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO list_comments (list_id, user_id, body)
+       VALUES ($1, $2, $3)
+       RETURNING id, body, created_at`,
+      [listId, req.user.sub, body]
+    );
+
+    const userResult = await pool.query(
+      'SELECT id, display_name, spotify_id, avatar_url FROM users WHERE id = $1',
+      [req.user.sub]
+    );
+    const userRow = userResult.rows[0] || {};
+
+    return res.status(201).json({
+      comment: {
+        id: result.rows[0].id,
+        body: result.rows[0].body,
+        created_at: result.rows[0].created_at,
+        user: {
+          id: userRow.id || req.user.sub,
+          display_name: userRow.display_name || null,
+          spotify_id: userRow.spotify_id || null,
+          avatar_url: userRow.avatar_url || null,
+        },
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'list_comment_create_failed' });
+  }
+});
+
 app.delete('/lists/:id', requireAuth, async (req, res) => {
   const listId = parseInt(req.params.id, 10);
 
@@ -1361,9 +1550,14 @@ app.get('/lists/:id', requireAuth, async (req, res) => {
 
   try {
     const listResult = await pool.query(
-      `SELECT id, title, description, is_ranked, created_at
-       FROM lists
-       WHERE id = $1 AND user_id = $2`,
+      `SELECT l.id, l.title, l.description, l.is_ranked, l.created_at,
+              COALESCE((SELECT COUNT(*) FROM list_likes WHERE list_id = l.id), 0) AS likes_count,
+              EXISTS(
+                SELECT 1 FROM list_likes
+                WHERE list_id = l.id AND user_id = $2
+              ) AS liked_by_me
+       FROM lists l
+       WHERE l.id = $1 AND l.user_id = $2`,
       [listId, req.user.sub]
     );
 
@@ -1371,7 +1565,12 @@ app.get('/lists/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'list_not_found' });
     }
 
-    const list = listResult.rows[0];
+    const listRow = listResult.rows[0];
+    const list = {
+      ...listRow,
+      likes_count: parseInt(listRow.likes_count, 10) || 0,
+      liked_by_me: listRow.liked_by_me === true,
+    };
 
     const itemResult = await pool.query(
       `SELECT spotify_album_id, created_at, position

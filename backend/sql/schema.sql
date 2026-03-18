@@ -39,6 +39,27 @@ CREATE TABLE IF NOT EXISTS list_items (
   UNIQUE (list_id, spotify_album_id)
 );
 
+CREATE TABLE IF NOT EXISTS list_likes (
+  list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (list_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_list_likes_list ON list_likes (list_id);
+CREATE INDEX IF NOT EXISTS idx_list_likes_user ON list_likes (user_id);
+
+CREATE TABLE IF NOT EXISTS list_comments (
+  id SERIAL PRIMARY KEY,
+  list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_list_comments_list ON list_comments (list_id);
+CREATE INDEX IF NOT EXISTS idx_list_comments_user ON list_comments (user_id);
+
 CREATE TABLE IF NOT EXISTS follows (
   follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   following_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

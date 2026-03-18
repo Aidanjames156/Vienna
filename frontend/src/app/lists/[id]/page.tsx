@@ -23,6 +23,8 @@ type ListDetail = {
   description: string | null;
   is_ranked: boolean;
   created_at: string;
+  likes_count: number;
+  liked_by_me: boolean;
   items: ListItem[];
 };
 
@@ -39,6 +41,18 @@ type SearchAlbum = {
   artists: string[];
   image: string | null;
   release_date: string;
+};
+
+type ListComment = {
+  id: number;
+  body: string;
+  created_at: string;
+  user: {
+    id: number;
+    spotify_id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  };
 };
 
 export default function ListPage() {
@@ -72,6 +86,13 @@ export default function ListPage() {
   const [titleDraft, setTitleDraft] = useState("");
   const [titleSaving, setTitleSaving] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [likeSaving, setLikeSaving] = useState(false);
+  const [likeError, setLikeError] = useState<string | null>(null);
+  const [comments, setComments] = useState<ListComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
   const suggestionOpen = useMemo(
     () => query.trim().length > 1 && suggestions.length > 0,
@@ -157,6 +178,53 @@ export default function ListPage() {
       cancelled = true;
     };
   }, [apiUrl, listId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadComments() {
+      if (!listId || !list) {
+        return;
+      }
+
+      setCommentsLoading(true);
+      setCommentsError(null);
+      try {
+        const response = await fetch(`${apiUrl}/lists/${listId}/comments`, {
+          credentials: "include",
+        });
+
+        if (response.status === 401) {
+          setComments([]);
+          setCommentsError("Sign in to view comments.");
+          return;
+        }
+
+        if (!response.ok) {
+          setCommentsError("Could not load comments.");
+          return;
+        }
+
+        const data = await response.json();
+        if (!cancelled) {
+          setComments(Array.isArray(data.comments) ? data.comments : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCommentsError("Could not load comments.");
+        }
+      } finally {
+        if (!cancelled) {
+          setCommentsLoading(false);
+        }
+      }
+    }
+
+    loadComments();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, listId, list]);
 
   useEffect(() => {
     let cancelled = false;
@@ -479,6 +547,97 @@ export default function ListPage() {
     }
   }
 
+  async function handleLikeToggle() {
+    if (!listId || !list) {
+      return;
+    }
+
+    setLikeSaving(true);
+    setLikeError(null);
+    try {
+      const response = await fetch(`${apiUrl}/lists/${listId}/like`, {
+        method: list.liked_by_me ? "DELETE" : "POST",
+        credentials: "include",
+      });
+
+      if (response.status === 401) {
+        setLikeError("Sign in to like lists.");
+        return;
+      }
+
+      if (!response.ok) {
+        setLikeError("Could not update like.");
+        return;
+      }
+
+      const data = await response.json().catch(() => null);
+      setList((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const fallbackCount = Math.max(
+          0,
+          (prev.likes_count || 0) + (prev.liked_by_me ? -1 : 1)
+        );
+        const nextCount =
+          typeof data?.likes_count === "number" ? data.likes_count : fallbackCount;
+        const nextLiked =
+          typeof data?.liked_by_me === "boolean"
+            ? data.liked_by_me
+            : !prev.liked_by_me;
+        return { ...prev, likes_count: nextCount, liked_by_me: nextLiked };
+      });
+    } catch (err) {
+      setLikeError("Could not update like.");
+    } finally {
+      setLikeSaving(false);
+    }
+  }
+
+  async function handleCommentSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!listId || !list) {
+      return;
+    }
+
+    const body = commentDraft.trim();
+    if (!body) {
+      setCommentsError("Write a comment before posting.");
+      return;
+    }
+
+    setCommentSubmitting(true);
+    setCommentsError(null);
+    try {
+      const response = await fetch(`${apiUrl}/lists/${listId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ body }),
+      });
+
+      if (response.status === 401) {
+        setCommentsError("Sign in to comment.");
+        return;
+      }
+
+      if (!response.ok) {
+        setCommentsError("Could not post comment.");
+        return;
+      }
+
+      const data = await response.json();
+      if (data.comment) {
+        setComments((prev) => [data.comment, ...prev]);
+        setCommentDraft("");
+      }
+    } catch (err) {
+      setCommentsError("Could not post comment.");
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
   function buildOrderedItems(
     items: ListItem[],
     sourceId: string,
@@ -598,6 +757,14 @@ export default function ListPage() {
     setDragOverId(null);
   }
 
+  function formatDate(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleDateString();
+  }
+
   return (
     <div className="min-h-screen px-4 py-10 text-[color:var(--foreground)]">
       <main className="mx-auto w-full max-w-6xl space-y-8">
@@ -672,6 +839,22 @@ export default function ListPage() {
             </Link>
             <button
               type="button"
+              className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
+              onClick={handleLikeToggle}
+              disabled={!list || likeSaving}
+            >
+              {likeSaving
+                ? "Saving..."
+                : list?.liked_by_me
+                ? "Unlike"
+                : "Like"}
+              <span className="ml-2 text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                {list?.likes_count ?? 0} like
+                {(list?.likes_count ?? 0) === 1 ? "" : "s"}
+              </span>
+            </button>
+            <button
+              type="button"
               className="rounded-none border border-red-500/40 px-4 py-2 text-[var(--foreground)] transition hover:border-red-500 disabled:cursor-not-allowed disabled:text-red-300/60"
               onClick={handleDeleteList}
               disabled={listDeleting}
@@ -695,6 +878,11 @@ export default function ListPage() {
         {listDeleteError && (
           <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
             {listDeleteError}
+          </div>
+        )}
+        {likeError && (
+          <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
+            {likeError}
           </div>
         )}
 
@@ -866,6 +1054,91 @@ export default function ListPage() {
                 );
               })}
             </div>
+
+            <section className="space-y-4 border border-[color:var(--border)] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-[var(--foreground)]">
+                  Comments
+                </h2>
+                <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                  {comments.length} total
+                </span>
+              </div>
+
+              <form onSubmit={handleCommentSubmit} className="space-y-3">
+                <textarea
+                  className="min-h-[100px] w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                  placeholder="Leave a comment about this list..."
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
+                  disabled={commentSubmitting}
+                >
+                  {commentSubmitting ? "Posting..." : "Post comment"}
+                </button>
+              </form>
+
+              {commentsError && (
+                <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+                  {commentsError}
+                </div>
+              )}
+
+              {commentsLoading && (
+                <div className="text-xs text-[var(--muted)]">
+                  Loading comments...
+                </div>
+              )}
+
+              {!commentsLoading && comments.length === 0 && (
+                <div className="text-xs text-[var(--muted)]">
+                  No comments yet.
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="border border-[color:var(--border)] px-4 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
+                          {comment.user.avatar_url ? (
+                            <img
+                              src={comment.user.avatar_url}
+                              alt={comment.user.display_name || comment.user.spotify_id}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-[var(--muted-strong)]">
+                              {(comment.user.display_name || comment.user.spotify_id || "U")
+                                .charAt(0)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-[var(--foreground)]">
+                            {comment.user.display_name || comment.user.spotify_id}
+                          </p>
+                          <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                            {formatDate(comment.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-[var(--foreground)]">
+                      {comment.body}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
           </section>
         )}
       </main>
