@@ -25,6 +25,7 @@ type ListDetail = {
   created_at: string;
   likes_count: number;
   liked_by_me: boolean;
+  tags: string[];
   items: ListItem[];
 };
 
@@ -88,6 +89,10 @@ export default function ListPage() {
   const [titleError, setTitleError] = useState<string | null>(null);
   const [likeSaving, setLikeSaving] = useState(false);
   const [likeError, setLikeError] = useState<string | null>(null);
+  const [editingTags, setEditingTags] = useState(false);
+  const [tagsDraft, setTagsDraft] = useState("");
+  const [tagsSaving, setTagsSaving] = useState(false);
+  const [tagsError, setTagsError] = useState<string | null>(null);
   const [comments, setComments] = useState<ListComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState<string | null>(null);
@@ -161,6 +166,7 @@ export default function ListPage() {
           if (data.list?.title) {
             setTitleDraft(data.list.title);
           }
+          setTagsDraft(Array.isArray(data.list?.tags) ? data.list.tags.join(", ") : "");
         }
       } catch (err) {
         if (!cancelled) {
@@ -512,6 +518,73 @@ export default function ListPage() {
     setTitleDraft(list?.title || "");
   }
 
+  function parseTagsInput(value: string) {
+    return value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+  }
+
+  async function handleTagsSave() {
+    if (!listId) {
+      return;
+    }
+
+    const nextTags = parseTagsInput(tagsDraft);
+
+    setTagsSaving(true);
+    setTagsError(null);
+    try {
+      const response = await fetch(`${apiUrl}/lists/${listId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tags: nextTags }),
+      });
+
+      if (response.status === 401) {
+        setTagsError("Sign in to update tags.");
+        return;
+      }
+
+      if (response.status === 400) {
+        const data = await response.json().catch(() => null);
+        if (data?.error === "tags_too_many") {
+          setTagsError("Limit tags to 8.");
+          return;
+        }
+        if (data?.error === "tag_too_long") {
+          setTagsError("Tags must be 24 characters or less.");
+          return;
+        }
+      }
+
+      if (!response.ok) {
+        setTagsError("Could not update tags.");
+        return;
+      }
+
+      const data = await response.json().catch(() => null);
+      const updatedTags = Array.isArray(data?.list?.tags)
+        ? data.list.tags
+        : nextTags;
+
+      setList((prev) => (prev ? { ...prev, tags: updatedTags } : prev));
+      setEditingTags(false);
+      setTagsDraft(updatedTags.join(", "));
+    } catch (err) {
+      setTagsError("Could not update tags.");
+    } finally {
+      setTagsSaving(false);
+    }
+  }
+
+  function handleTagsCancel() {
+    setEditingTags(false);
+    setTagsError(null);
+    setTagsDraft(list?.tags?.join(", ") || "");
+  }
+
   async function handleDeleteList() {
     if (!listId) {
       return;
@@ -822,6 +895,64 @@ export default function ListPage() {
               <p className="mt-2 text-sm text-[var(--muted)]">
                 {list.description}
               </p>
+            )}
+            {editingTags ? (
+              <div className="mt-3 space-y-2">
+                <input
+                  className="w-full max-w-lg rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                  value={tagsDraft}
+                  onChange={(event) => setTagsDraft(event.target.value)}
+                  placeholder="Tags (comma separated)"
+                />
+                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <button
+                    type="button"
+                    className="rounded-none bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
+                    onClick={handleTagsSave}
+                    disabled={tagsSaving}
+                  >
+                    {tagsSaving ? "Saving..." : "Save tags"}
+                  </button>
+                  <button
+                    type="button"
+                    className="border border-[color:var(--border)] px-3 py-1 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
+                    onClick={handleTagsCancel}
+                    disabled={tagsSaving}
+                  >
+                    Cancel
+                  </button>
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                    Up to 8 tags
+                  </span>
+                </div>
+                {tagsError && (
+                  <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                    {tagsError}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                {list?.tags && list.tags.length > 0 ? (
+                  list.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="border border-[color:var(--border)] px-2 py-1"
+                    >
+                      #{tag}
+                    </span>
+                  ))
+                ) : (
+                  <span>No tags yet.</span>
+                )}
+                <button
+                  type="button"
+                  className="border border-[color:var(--border)] px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--foreground)] transition hover:border-[var(--accent)]"
+                  onClick={() => setEditingTags(true)}
+                >
+                  Edit tags
+                </button>
+              </div>
             )}
           </div>
           <div className="flex items-center gap-3 text-sm text-[var(--muted)]">

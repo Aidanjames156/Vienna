@@ -171,10 +171,10 @@ export default function SearchPage() {
             </div>
             <div className="border border-[color:var(--border)] p-4 text-sm text-[var(--muted)]">
               <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                New
+              
               </p>
               <p className="mt-2">
-                Search any Spotify album without signing in. Log in to rate and
+                Search any album without signing in. Log in to rate and
                 review.
               </p>
             </div>

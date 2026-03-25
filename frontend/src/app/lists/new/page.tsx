@@ -18,6 +18,7 @@ export default function NewListPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isRanked, setIsRanked] = useState(false);
+  const [tags, setTags] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,6 +60,10 @@ export default function NewListPage() {
 
     setSubmitting(true);
     try {
+      const parsedTags = tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
       const response = await fetch(`${apiUrl}/me/lists`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -67,12 +72,25 @@ export default function NewListPage() {
           title: title.trim(),
           description: description.trim() || null,
           is_ranked: isRanked,
+          tags: parsedTags,
         }),
       });
 
       if (response.status === 401) {
         setError("Sign in to create a list.");
         return;
+      }
+
+      if (response.status === 400) {
+        const data = await response.json().catch(() => null);
+        if (data?.error === "tags_too_many") {
+          setError("Limit tags to 8.");
+          return;
+        }
+        if (data?.error === "tag_too_long") {
+          setError("Tags must be 24 characters or less.");
+          return;
+        }
       }
 
       if (!response.ok) {
@@ -165,6 +183,20 @@ export default function NewListPage() {
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Tags
+              </label>
+              <input
+                className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                placeholder="R&B, Classics, Late Night"
+                value={tags}
+                onChange={(event) => setTags(event.target.value)}
+              />
+              <p className="text-xs text-[var(--muted)]">
+                Up to 8 tags. Separate with commas.
+              </p>
             </div>
             <label className="flex items-center gap-3 border border-[color:var(--border)] px-4 py-3 text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
               <input

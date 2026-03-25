@@ -43,8 +43,13 @@ const rateLimitStore = new Map();
 
 const searchCache = new Map();
 const albumCache = new Map();
+const artistCache = new Map();
+const artistSearchCache = new Map();
+const trendingCache = new Map();
 const searchCacheTtlMs = 60_000;
 const albumCacheTtlMs = 5 * 60_000;
+const artistCacheTtlMs = 5 * 60_000;
+const trendingCacheTtlMs = 5 * 60_000;
 const cacheMaxEntries = 500;
 
 app.use(
@@ -134,6 +139,28 @@ function setCached(map, key, value, ttlMs) {
 
 function isValidSpotifyId(value) {
   return /^[A-Za-z0-9]{22}$/.test(value);
+}
+
+const maxListTags = 8;
+const maxListTagLength = 24;
+
+function extractListTags(input) {
+  let raw = [];
+  if (Array.isArray(input)) {
+    raw = input;
+  } else if (typeof input === 'string') {
+    raw = input.split(',');
+  }
+
+  const cleaned = raw
+    .filter((tag) => typeof tag === 'string')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0)
+    .map((tag) => tag.replace(/^#+/, ''))
+    .map((tag) => tag.replace(/\s+/g, ' '))
+    .map((tag) => tag.toLowerCase());
+
+  return Array.from(new Set(cleaned));
 }
 
 async function getUserRefreshToken(userId) {
@@ -427,7 +454,7 @@ app.get('/me/profile', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, spotify_id, display_name, avatar_url, bio,
-              favorite_genres, favorite_album_ids
+              favorite_genres, favorite_album_ids, favorite_artist_ids
        FROM users
        WHERE id = $1`,
       [req.user.sub]
@@ -509,6 +536,27 @@ app.patch('/me/profile', requireAuth, async (req, res) => {
     values.push(albumIds);
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'favorite_artist_ids')) {
+    if (!Array.isArray(req.body.favorite_artist_ids)) {
+      return res.status(400).json({ error: 'favorite_artist_ids_invalid' });
+    }
+    const artistIds = req.body.favorite_artist_ids
+      .filter((value) => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    if (artistIds.length > 5) {
+      return res.status(400).json({ error: 'favorite_artist_ids_too_many' });
+    }
+
+    if (artistIds.some((id) => !isValidSpotifyId(id))) {
+      return res.status(400).json({ error: 'favorite_artist_ids_invalid' });
+    }
+
+    updates.push(`favorite_artist_ids = $${values.length + 1}`);
+    values.push(artistIds);
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'profile_update_required' });
   }
@@ -520,7 +568,7 @@ app.patch('/me/profile', requireAuth, async (req, res) => {
        SET ${updates.join(', ')}
        WHERE id = $${values.length}
        RETURNING id, spotify_id, display_name, avatar_url, bio,
-                 favorite_genres, favorite_album_ids`,
+                 favorite_genres, favorite_album_ids, favorite_artist_ids`,
       values
     );
 
@@ -620,6 +668,151 @@ app.get('/spotify/search', rateLimit, async (req, res) => {
   }
 });
 
+app.get('/spotify/trending', rateLimit, async (req, res) => {
+  const limitRaw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+  const limit = Math.min(Math.max(parseInt(limitRaw || '12', 10), 1), 20);
+
+  try {
+    const { accessToken, cacheKey } = await getAccessContext(req);
+    const cacheId = `${cacheKey}:trending:${limit}`;
+    const cached = getCached(trendingCache, cacheId);
+    if (cached) {
+      res.set('X-Cache', 'HIT');
+      return res.json(cached);
+    }
+
+    const releasesUrl = new URL('https://api.spotify.com/v1/browse/new-releases');
+    releasesUrl.searchParams.set('limit', '50');
+
+    const releaseData = await fetchSpotifyJson(accessToken, releasesUrl.toString());
+    const releaseItems = Array.isArray(releaseData.albums?.items)
+      ? releaseData.albums.items
+      : [];
+
+    const releaseIds = Array.from(
+      new Set(
+        releaseItems
+          .map((item) => item?.id)
+          .filter((id) => typeof id === 'string' && id.length > 0)
+      )
+    );
+
+    if (releaseIds.length === 0) {
+      const payload = { albums: [] };
+      setCached(trendingCache, cacheId, payload, trendingCacheTtlMs);
+      res.set('X-Cache', 'MISS');
+      return res.json(payload);
+    }
+
+    const chunks = [];
+    for (let i = 0; i < releaseIds.length; i += 20) {
+      chunks.push(releaseIds.slice(i, i + 20));
+    }
+
+    const detailResults = await Promise.all(
+      chunks.map((chunk) =>
+        fetchSpotifyJson(
+          accessToken,
+          `https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`
+        )
+      )
+    );
+
+    const detailedAlbums = detailResults.flatMap((result) =>
+      Array.isArray(result.albums) ? result.albums : []
+    );
+
+    const mappedAlbums = detailedAlbums
+      .filter(Boolean)
+      .map((album) => ({
+        id: album.id,
+        name: album.name,
+        artists: album.artists?.map((artist) => artist.name) || [],
+        image: album.images?.[1]?.url || album.images?.[0]?.url || null,
+        release_date: album.release_date,
+        total_tracks: album.total_tracks,
+        popularity: typeof album.popularity === 'number' ? album.popularity : 0,
+      }));
+
+    const deduped = [];
+    const seen = new Map();
+    mappedAlbums.forEach((album) => {
+      if (!album) {
+        return;
+      }
+      const nameKey = (album.name || '').trim().toLowerCase();
+      const artistKey = (album.artists?.[0] || '').trim().toLowerCase();
+      const key = `${nameKey}|${artistKey}`;
+      const existingIndex = seen.get(key);
+      if (typeof existingIndex !== 'number') {
+        seen.set(key, deduped.length);
+        deduped.push(album);
+        return;
+      }
+      const existing = deduped[existingIndex];
+      if (
+        (album.popularity || 0) > (existing.popularity || 0) ||
+        (!existing.image && album.image)
+      ) {
+        deduped[existingIndex] = album;
+      }
+    });
+
+    const albums = deduped
+      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+      .slice(0, limit);
+
+    const payload = { albums };
+    setCached(trendingCache, cacheId, payload, trendingCacheTtlMs);
+    res.set('X-Cache', 'MISS');
+    return res.json(payload);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'spotify_trending_failed' });
+  }
+});
+
+app.get('/spotify/artists/search', rateLimit, async (req, res) => {
+  const query = Array.isArray(req.query.query) ? req.query.query[0] : req.query.query;
+  const limitRaw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+  const limit = Math.min(Math.max(parseInt(limitRaw || '10', 10), 1), 20);
+
+  if (!query || !query.trim()) {
+    return res.status(400).json({ error: 'query_required' });
+  }
+
+  try {
+    const { accessToken, cacheKey } = await getAccessContext(req);
+    const cacheId = `${cacheKey}:artist-search:${limit}:${query.trim().toLowerCase()}`;
+    const cached = getCached(artistSearchCache, cacheId);
+    if (cached) {
+      res.set('X-Cache', 'HIT');
+      return res.json(cached);
+    }
+
+    const url = new URL('https://api.spotify.com/v1/search');
+    url.searchParams.set('q', query.trim());
+    url.searchParams.set('type', 'artist');
+    url.searchParams.set('limit', String(limit));
+
+    const data = await fetchSpotifyJson(accessToken, url.toString());
+    const artists = (data.artists?.items || []).map((artist) => ({
+      id: artist.id,
+      name: artist.name,
+      image: artist.images?.[1]?.url || artist.images?.[0]?.url || null,
+      genres: artist.genres || [],
+    }));
+
+    const payload = { artists };
+    setCached(artistSearchCache, cacheId, payload, searchCacheTtlMs);
+    res.set('X-Cache', 'MISS');
+    return res.json(payload);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'spotify_artist_search_failed' });
+  }
+});
+
 app.get('/spotify/albums', rateLimit, async (req, res) => {
   const idsRaw = Array.isArray(req.query.ids)
     ? req.query.ids.join(',')
@@ -686,6 +879,75 @@ app.get('/spotify/albums', rateLimit, async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'spotify_album_failed' });
+  }
+});
+
+app.get('/spotify/artists', rateLimit, async (req, res) => {
+  const idsRaw = Array.isArray(req.query.ids)
+    ? req.query.ids.join(',')
+    : req.query.ids;
+
+  if (!idsRaw || typeof idsRaw !== 'string') {
+    return res.status(400).json({ error: 'ids_required' });
+  }
+
+  const ids = idsRaw
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => isValidSpotifyId(id));
+
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'ids_invalid' });
+  }
+
+  if (ids.length > 20) {
+    return res.status(400).json({ error: 'too_many_ids' });
+  }
+
+  try {
+    const { accessToken, cacheKey } = await getAccessContext(req);
+    const cacheIds = ids.map((id) => ({
+      id,
+      cached: getCached(artistCache, `${cacheKey}:artist:${id}`),
+    }));
+
+    const cachedArtists = cacheIds
+      .filter((entry) => entry.cached)
+      .map((entry) => entry.cached.artist);
+
+    const missingIds = cacheIds
+      .filter((entry) => !entry.cached)
+      .map((entry) => entry.id);
+
+    let fetchedArtists = [];
+    if (missingIds.length > 0) {
+      const url = new URL('https://api.spotify.com/v1/artists');
+      url.searchParams.set('ids', missingIds.join(','));
+      const data = await fetchSpotifyJson(accessToken, url.toString());
+      fetchedArtists = (data.artists || [])
+        .filter(Boolean)
+        .map((artist) => ({
+          id: artist.id,
+          name: artist.name,
+          images: artist.images || [],
+          genres: artist.genres || [],
+        }));
+
+      fetchedArtists.forEach((artist) => {
+        setCached(
+          artistCache,
+          `${cacheKey}:artist:${artist.id}`,
+          { artist },
+          artistCacheTtlMs
+        );
+      });
+    }
+
+    const artists = [...cachedArtists, ...fetchedArtists];
+    return res.json({ artists });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'spotify_artists_failed' });
   }
 });
 
@@ -1041,6 +1303,7 @@ app.get('/me/lists', requireAuth, async (req, res) => {
       created_at: row.created_at,
       likes_count: parseInt(row.likes_count, 10) || 0,
       liked_by_me: row.liked_by_me === true,
+      tags: [],
       items: [],
     }));
 
@@ -1069,6 +1332,21 @@ app.get('/me/lists', requireAuth, async (req, res) => {
       }
     });
 
+    const tagResult = await pool.query(
+      `SELECT list_id, tag
+       FROM list_tags
+       WHERE list_id = ANY($1)
+       ORDER BY tag`,
+      [listIds]
+    );
+
+    tagResult.rows.forEach((row) => {
+      const list = listMap.get(row.list_id);
+      if (list) {
+        list.tags.push(row.tag);
+      }
+    });
+
     return res.json({ lists });
   } catch (err) {
     console.error(err);
@@ -1082,6 +1360,7 @@ app.post('/me/lists', requireAuth, async (req, res) => {
     typeof req.body?.description === 'string' ? req.body.description.trim() : '';
   const description = descriptionRaw.length > 0 ? descriptionRaw : null;
   const isRanked = req.body?.is_ranked === true;
+  const tags = extractListTags(req.body?.tags);
 
   if (!titleRaw) {
     return res.status(400).json({ error: 'title_required' });
@@ -1095,15 +1374,52 @@ app.post('/me/lists', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'description_too_long' });
   }
 
-  try {
-    const result = await pool.query(
-      `INSERT INTO lists (user_id, title, description, is_ranked)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, title, description, is_ranked, created_at`,
-      [req.user.sub, titleRaw, description, isRanked]
-    );
+  if (tags.length > maxListTags) {
+    return res.status(400).json({ error: 'tags_too_many' });
+  }
 
-    return res.status(201).json({ list: result.rows[0] });
+  if (tags.some((tag) => tag.length > maxListTagLength)) {
+    return res.status(400).json({ error: 'tag_too_long' });
+  }
+
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `INSERT INTO lists (user_id, title, description, is_ranked)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, title, description, is_ranked, created_at`,
+        [req.user.sub, titleRaw, description, isRanked]
+      );
+
+      const listId = result.rows[0]?.id;
+      if (listId && tags.length > 0) {
+        const values = [listId, ...tags];
+        const placeholders = tags
+          .map((_, index) => `($1, $${index + 2})`)
+          .join(', ');
+        await client.query(
+          `INSERT INTO list_tags (list_id, tag)
+           VALUES ${placeholders}
+           ON CONFLICT (list_id, tag) DO NOTHING`,
+          values
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.status(201).json({
+        list: {
+          ...result.rows[0],
+          tags,
+        },
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'list_create_failed' });
@@ -1116,12 +1432,13 @@ app.patch('/lists/:id', requireAuth, async (req, res) => {
     typeof req.body?.is_ranked === 'boolean' ? req.body.is_ranked : null;
   const hasTitle = Object.prototype.hasOwnProperty.call(req.body || {}, 'title');
   const hasDescription = Object.prototype.hasOwnProperty.call(req.body || {}, 'description');
+  const hasTags = Object.prototype.hasOwnProperty.call(req.body || {}, 'tags');
 
   if (!listId) {
     return res.status(400).json({ error: 'list_id_required' });
   }
 
-  if (isRanked === null && !hasTitle && !hasDescription) {
+  if (isRanked === null && !hasTitle && !hasDescription && !hasTags) {
     return res.status(400).json({ error: 'update_required' });
   }
 
@@ -1137,6 +1454,7 @@ app.patch('/lists/:id', requireAuth, async (req, res) => {
 
     const updates = [];
     const values = [];
+    const tags = hasTags ? extractListTags(req.body?.tags) : [];
 
     if (isRanked !== null) {
       updates.push(`is_ranked = $${values.length + 1}`);
@@ -1167,20 +1485,59 @@ app.patch('/lists/:id', requireAuth, async (req, res) => {
       values.push(description);
     }
 
-    if (updates.length === 0) {
+    if (hasTags && tags.length > maxListTags) {
+      return res.status(400).json({ error: 'tags_too_many' });
+    }
+
+    if (hasTags && tags.some((tag) => tag.length > maxListTagLength)) {
+      return res.status(400).json({ error: 'tag_too_long' });
+    }
+
+    let listRow = listResult.rows[0];
+
+    if (updates.length > 0) {
+      values.push(listId);
+      const result = await pool.query(
+        `UPDATE lists
+         SET ${updates.join(', ')}
+         WHERE id = $${values.length}
+         RETURNING id, title, description, is_ranked, created_at`,
+        values
+      );
+      if (result.rows.length > 0) {
+        listRow = result.rows[0];
+      }
+    } else if (!hasTags) {
       return res.status(400).json({ error: 'update_required' });
     }
 
-    values.push(listId);
-    const result = await pool.query(
-      `UPDATE lists
-       SET ${updates.join(', ')}
-       WHERE id = $${values.length}
-       RETURNING id, title, description, is_ranked, created_at`,
-      values
+    if (hasTags) {
+      await pool.query('DELETE FROM list_tags WHERE list_id = $1', [listId]);
+      if (tags.length > 0) {
+        const tagValues = [listId, ...tags];
+        const placeholders = tags
+          .map((_, index) => `($1, $${index + 2})`)
+          .join(', ');
+        await pool.query(
+          `INSERT INTO list_tags (list_id, tag)
+           VALUES ${placeholders}
+           ON CONFLICT (list_id, tag) DO NOTHING`,
+          tagValues
+        );
+      }
+    }
+
+    const tagResult = await pool.query(
+      'SELECT tag FROM list_tags WHERE list_id = $1 ORDER BY tag',
+      [listId]
     );
 
-    return res.json({ list: result.rows[0] });
+    return res.json({
+      list: {
+        ...listRow,
+        tags: tagResult.rows.map((row) => row.tag),
+      },
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'list_update_failed' });
@@ -1585,6 +1942,12 @@ app.get('/lists/:id', requireAuth, async (req, res) => {
       created_at: row.created_at,
       position: row.position,
     }));
+
+    const tagResult = await pool.query(
+      'SELECT tag FROM list_tags WHERE list_id = $1 ORDER BY tag',
+      [listId]
+    );
+    list.tags = tagResult.rows.map((row) => row.tag);
 
     return res.json({ list });
   } catch (err) {

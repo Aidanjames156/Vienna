@@ -10,10 +10,21 @@ type User = {
   display_name: string | null;
 };
 
+type TrendingAlbum = {
+  id: string;
+  name: string;
+  artists: string[];
+  image: string | null;
+  popularity?: number;
+};
+
 export default function Home() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:4000";
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [trending, setTrending] = useState<TrendingAlbum[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
+  const [trendingError, setTrendingError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +53,42 @@ export default function Home() {
     };
   }, [apiUrl]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTrending() {
+      setTrendingLoading(true);
+      setTrendingError(null);
+      try {
+        const response = await fetch(
+          `${apiUrl}/spotify/trending?limit=8`,
+          { credentials: "include" }
+        );
+        if (!response.ok) {
+          throw new Error("trending_failed");
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          setTrending(Array.isArray(data.albums) ? data.albums : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setTrendingError("Could not load trending albums.");
+          setTrending([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTrendingLoading(false);
+        }
+      }
+    }
+
+    loadTrending();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl]);
+
   async function handleLogout() {
     await fetch(`${apiUrl}/auth/logout`, {
       method: "POST",
@@ -65,7 +112,7 @@ export default function Home() {
                   Jukebox
                 </p>
                 <p className="font-mono text-xl font-semibold tracking-tight">
-                  Album diary for music obsessives
+                  For music obsessives
                 </p>
               </div>
             </div>
@@ -124,7 +171,7 @@ export default function Home() {
                 Your listening ledger
               </p>
               <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
-                Track, rate, and review the albums you live for.
+                Track, rate, and review the music you live for.
               </h1>
               <p className="max-w-xl text-sm text-[var(--muted)]">
                 Build a living diary of the records that shaped your year. Save
@@ -154,7 +201,7 @@ export default function Home() {
                   Featured
                 </p>
                 <p className="mt-2 text-sm text-[var(--foreground)]">
-                  Jukebox works like a music Letterboxd. Log listens, pin your
+                  Log listens, pin your
                   favorites, and show the world your top three.
                 </p>
               </div>
@@ -163,7 +210,7 @@ export default function Home() {
                   Discover
                 </p>
                 <p className="mt-2 text-sm text-[var(--muted)]">
-                  Search Spotify without signing in. Log in when you are ready
+                  Search our catalog. Log in when you are ready
                   to rate and review.
                 </p>
               </div>
@@ -183,7 +230,7 @@ export default function Home() {
             {
               title: "Curate ranked lists",
               description:
-                "Drag and drop to order your favorite records in ranked lists.",
+                "Order your favorite records in ranked lists.",
             },
             {
               title: "Pin your top reviews",
@@ -205,13 +252,89 @@ export default function Home() {
           ))}
         </section>
 
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                Trending
+              </p>
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                Trending albums
+              </h2>
+            </div>
+            <Link
+              href="/search"
+              className="rounded-none border border-[color:var(--border)] px-3 py-2 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
+            >
+              Explore
+            </Link>
+          </div>
+
+          {trendingLoading && (
+            <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--muted)]">
+              Loading trending albums...
+            </div>
+          )}
+
+          {trendingError && (
+            <div className="border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+              {trendingError}
+            </div>
+          )}
+
+          {!trendingLoading && !trendingError && trending.length === 0 && (
+            <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--muted)]">
+              No trending albums available right now.
+            </div>
+          )}
+
+          {!trendingLoading && trending.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {trending.map((album) => (
+                <Link
+                  key={album.id}
+                  href={`/albums/${album.id}`}
+                  className="group border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3 transition hover:border-[var(--accent)]"
+                >
+                  <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
+                    {album.image ? (
+                      <img
+                        src={album.image}
+                        alt={`${album.name} cover`}
+                        className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-[1.02]"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                        No art
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      {album.name}
+                    </p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {album.artists.join(", ")}
+                    </p>
+                    {typeof album.popularity === "number" && (
+                      <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                        Popularity {album.popularity}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
           Follow other listeners, trade recommendations, and build your music
           canon together.
         </section>
 
         <section className="flex flex-wrap items-center justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-xs text-[var(--muted)]">
-          <span>Jukebox · Built for album people</span>
+          <span>Jukebox</span>
           <div className="flex items-center gap-4 text-[10px] uppercase tracking-[0.3em]">
             <span>About</span>
             <span>Privacy</span>

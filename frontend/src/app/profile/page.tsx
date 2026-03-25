@@ -34,6 +34,7 @@ type List = {
   is_ranked: boolean;
   likes_count?: number;
   liked_by_me?: boolean;
+  tags?: string[];
   items: ListItem[];
 };
 
@@ -44,12 +45,20 @@ type AlbumCard = {
   image: string | null;
 };
 
+type ArtistCard = {
+  id: string;
+  name: string;
+  image: string | null;
+  genres: string[];
+};
+
 type Profile = {
   display_name: string | null;
   avatar_url: string | null;
   bio: string | null;
   favorite_genres: string[];
   favorite_album_ids: string[];
+  favorite_artist_ids: string[];
 };
 
 type SearchAlbum = {
@@ -58,6 +67,13 @@ type SearchAlbum = {
   artists: string[];
   image: string | null;
   release_date: string;
+};
+
+type SearchArtist = {
+  id: string;
+  name: string;
+  image: string | null;
+  genres: string[];
 };
 
 type UserSummary = {
@@ -73,6 +89,7 @@ export default function ProfilePage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [albumMap, setAlbumMap] = useState<Record<string, AlbumCard>>({});
+  const [artistMap, setArtistMap] = useState<Record<string, ArtistCard>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lists, setLists] = useState<List[]>([]);
@@ -104,6 +121,11 @@ export default function ProfilePage() {
   const [favoriteSuggestions, setFavoriteSuggestions] = useState<SearchAlbum[]>([]);
   const [favoriteSearching, setFavoriteSearching] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [favoriteArtistIds, setFavoriteArtistIds] = useState<string[]>([]);
+  const [favoriteArtistQuery, setFavoriteArtistQuery] = useState("");
+  const [favoriteArtistSuggestions, setFavoriteArtistSuggestions] = useState<SearchArtist[]>([]);
+  const [favoriteArtistSearching, setFavoriteArtistSearching] = useState(false);
+  const [favoriteArtistError, setFavoriteArtistError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
@@ -143,6 +165,42 @@ export default function ProfilePage() {
 
   const recentReviews = useMemo(() => reviews, [reviews]);
 
+  const recentActivity = useMemo(() => {
+    const items = [];
+
+    reviews.forEach((review) => {
+      const album = albumMap[review.spotify_album_id];
+      items.push({
+        id: `review-${review.id}`,
+        type: "review",
+        created_at: review.created_at,
+        title: album?.name || "Album",
+        subtitle: album?.artists?.join(", ") || review.spotify_album_id,
+        rating: review.rating,
+        href: `/albums/${review.spotify_album_id}`,
+      });
+    });
+
+    lists.forEach((list) => {
+      items.push({
+        id: `list-${list.id}`,
+        type: "list",
+        created_at: list.created_at,
+        title: list.title,
+        subtitle: list.description || "New list",
+        href: `/lists/${list.id}`,
+      });
+    });
+
+    return items
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+      )
+      .slice(0, 10);
+  }, [reviews, lists, albumMap]);
+
   const avatarInitial = (
     displayName || user?.spotify_id || "J"
   ).charAt(0).toUpperCase();
@@ -150,6 +208,7 @@ export default function ProfilePage() {
     profile?.display_name || user?.display_name || user?.spotify_id || "You";
   const profileGenres = profile?.favorite_genres || [];
   const profileFavorites = profile?.favorite_album_ids || [];
+  const profileFavoriteArtists = profile?.favorite_artist_ids || [];
   const profileBio = profile?.bio || "";
 
   function getUserInitial(person: UserSummary) {
@@ -221,6 +280,7 @@ export default function ProfilePage() {
           setBio(nextProfile?.bio || "");
           setGenresInput(nextProfile?.favorite_genres?.join(", ") || "");
           setFavoriteAlbumIds(nextProfile?.favorite_album_ids || []);
+          setFavoriteArtistIds(nextProfile?.favorite_artist_ids || []);
           setAvatarUrl(nextProfile?.avatar_url || null);
         }
       } catch (err) {
@@ -441,6 +501,35 @@ export default function ProfilePage() {
   }, [apiUrl, favoriteQuery]);
 
   useEffect(() => {
+    if (favoriteArtistQuery.trim().length < 2) {
+      setFavoriteArtistSuggestions([]);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      setFavoriteArtistSearching(true);
+      try {
+        const response = await fetch(
+          `${apiUrl}/spotify/artists/search?query=${encodeURIComponent(
+            favoriteArtistQuery.trim()
+          )}&limit=5`,
+          { credentials: "include" }
+        );
+        const data = await response.json();
+        setFavoriteArtistSuggestions(
+          Array.isArray(data.artists) ? data.artists : []
+        );
+      } catch (err) {
+        setFavoriteArtistSuggestions([]);
+      } finally {
+        setFavoriteArtistSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [apiUrl, favoriteArtistQuery]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadAlbums() {
@@ -512,6 +601,76 @@ export default function ProfilePage() {
     };
   }, [apiUrl, reviews, lists, favoriteAlbumIds, albumMap]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadArtists() {
+      if (favoriteArtistIds.length === 0) {
+        return;
+      }
+
+      const validIds = Array.from(new Set(favoriteArtistIds)).filter((id) =>
+        /^[A-Za-z0-9]{22}$/.test(id)
+      );
+
+      const uniqueIds = validIds.filter((id) => !artistMap[id]);
+
+      if (uniqueIds.length === 0) {
+        return;
+      }
+
+      try {
+        const chunks: string[][] = [];
+        for (let i = 0; i < uniqueIds.length; i += 20) {
+          chunks.push(uniqueIds.slice(i, i + 20));
+        }
+
+        const responses = await Promise.all(
+          chunks.map((chunk) =>
+            fetch(`${apiUrl}/spotify/artists?ids=${chunk.join(",")}`, {
+              credentials: "include",
+            })
+          )
+        );
+
+        const artists = await Promise.all(
+          responses.map(async (response) => {
+            if (!response.ok) {
+              return [];
+            }
+            const data = await response.json();
+            return Array.isArray(data.artists) ? data.artists : [];
+          })
+        );
+
+        if (!cancelled) {
+          setArtistMap((prev) => {
+            const next = { ...prev };
+            artists.flat().forEach((artist) => {
+              if (!artist) {
+                return;
+              }
+              next[artist.id] = {
+                id: artist.id,
+                name: artist.name,
+                image: artist.images?.[1]?.url || artist.images?.[0]?.url || null,
+                genres: artist.genres || [],
+              };
+            });
+            return next;
+          });
+        }
+      } catch (err) {
+        // ignore artist enrichment errors
+      }
+    }
+
+    loadArtists();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, favoriteArtistIds, artistMap]);
+
   function formatDate(value: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -537,6 +696,11 @@ export default function ProfilePage() {
       return;
     }
 
+    if (favoriteArtistIds.length > 5) {
+      setProfileError("Pick up to 5 favorite artists.");
+      return;
+    }
+
     setProfileSaving(true);
     setProfileError(null);
     try {
@@ -549,6 +713,7 @@ export default function ProfilePage() {
           bio: bio.trim() || null,
           favorite_genres: genres,
           favorite_album_ids: favoriteAlbumIds,
+          favorite_artist_ids: favoriteArtistIds,
         }),
       });
 
@@ -569,6 +734,7 @@ export default function ProfilePage() {
       setBio(nextProfile?.bio || "");
       setGenresInput(nextProfile?.favorite_genres?.join(", ") || "");
       setFavoriteAlbumIds(nextProfile?.favorite_album_ids || []);
+      setFavoriteArtistIds(nextProfile?.favorite_artist_ids || []);
       setAvatarUrl(nextProfile?.avatar_url || avatarUrl);
       setUser((prev) =>
         prev
@@ -648,16 +814,38 @@ export default function ProfilePage() {
     setFavoriteAlbumIds((prev) => prev.filter((id) => id !== albumId));
   }
 
+  function handleFavoriteArtistAdd(artist: SearchArtist) {
+    setFavoriteArtistError(null);
+    if (favoriteArtistIds.includes(artist.id)) {
+      return;
+    }
+    if (favoriteArtistIds.length >= 5) {
+      setFavoriteArtistError("You can only pick 5 favorite artists.");
+      return;
+    }
+    setFavoriteArtistIds((prev) => [...prev, artist.id]);
+    setFavoriteArtistQuery("");
+    setFavoriteArtistSuggestions([]);
+  }
+
+  function handleFavoriteArtistRemove(artistId: string) {
+    setFavoriteArtistIds((prev) => prev.filter((id) => id !== artistId));
+  }
+
   function handleEditToggle(nextValue: boolean) {
     if (!nextValue && profile) {
       setDisplayName(profile.display_name || "");
       setBio(profile.bio || "");
       setGenresInput(profile.favorite_genres?.join(", ") || "");
       setFavoriteAlbumIds(profile.favorite_album_ids || []);
+      setFavoriteArtistIds(profile.favorite_artist_ids || []);
       setAvatarUrl(profile.avatar_url || null);
       setFavoriteQuery("");
       setFavoriteSuggestions([]);
       setFavoriteError(null);
+      setFavoriteArtistQuery("");
+      setFavoriteArtistSuggestions([]);
+      setFavoriteArtistError(null);
       setProfileError(null);
     }
     setEditingProfile(nextValue);
@@ -942,13 +1130,13 @@ export default function ProfilePage() {
         </header>
 
         {!authChecked && (
-          <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
+          <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--muted)]">
             Checking session...
           </div>
         )}
 
         {authChecked && !user && (
-          <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--foreground)]">
+          <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--foreground)]">
             <p>You need to sign in to view your profile.</p>
             <a
               className="mt-4 inline-flex items-center justify-center rounded-none bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
@@ -960,8 +1148,8 @@ export default function ProfilePage() {
         )}
 
         {user && (
-          <section className="border border-[color:var(--border)] p-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <section className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--border)] pb-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
                   Signed in as
@@ -970,7 +1158,7 @@ export default function ProfilePage() {
                   {user.display_name || user.spotify_id}
                 </p>
               </div>
-              <div className="flex gap-6 text-sm text-[var(--muted)]">
+              <div className="flex flex-wrap items-center gap-6 text-sm text-[var(--muted)]">
                 <span>{reviews.length} reviews</span>
                 <span>
                   {averageRating ? `Average ${averageRating}` : "No ratings"}
@@ -978,7 +1166,7 @@ export default function ProfilePage() {
               </div>
             </div>
             {pinnedReview ? (
-              <div className="mt-5 border border-[color:var(--border)] p-4">
+              <div className="mt-4 border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
                   Pinned review
                 </p>
@@ -1019,7 +1207,7 @@ export default function ProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="mt-5 border border-[color:var(--border)] p-4 text-xs text-[var(--muted)]">
+              <div className="mt-4 border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4 text-xs text-[var(--muted)]">
                 Pin a review to feature it here.
               </div>
             )}
@@ -1027,8 +1215,8 @@ export default function ProfilePage() {
         )}
 
         {user && (
-          <section className="space-y-6 border border-[color:var(--border)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="space-y-6 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">
                 Profile
               </h2>
@@ -1051,7 +1239,7 @@ export default function ProfilePage() {
               <div className="space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="relative h-20 w-20 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
+                    <div className="relative h-28 w-28 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
                       {avatarUrl ? (
                         <img
                           src={avatarUrl}
@@ -1082,13 +1270,13 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <div className="border border-[color:var(--border)] p-4 text-sm text-[var(--foreground)]">
+                <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4 text-sm text-[var(--foreground)]">
                   {profileBio
                     ? profileBio
                     : "Add a bio to share your listening style."}
                 </div>
 
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className="grid gap-6 lg:grid-cols-3">
                   <div className="space-y-3">
                     <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                       Favorite genres
@@ -1112,6 +1300,56 @@ export default function ProfilePage() {
                   </div>
                   <div className="space-y-3">
                     <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                      Favorite artists
+                    </p>
+                    {profileFavoriteArtists.length === 0 ? (
+                      <p className="text-sm text-[var(--muted)]">
+                        Pick your favorite artists to show them here.
+                      </p>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {profileFavoriteArtists.map((artistId) => {
+                          const artist = artistMap[artistId];
+                          return (
+                            <div
+                              key={artistId}
+                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
+                            >
+                              <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
+                                {artist?.image ? (
+                                  <img
+                                    src={artist.image}
+                                    alt={`${artist.name} portrait`}
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                                    No art
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-3">
+                                <p className="text-sm font-semibold text-[var(--foreground)]">
+                                  {artist?.name || "Artist"}
+                                </p>
+                              {artist?.genres?.length ? (
+                                <p className="text-xs text-[var(--muted)]">
+                                  {artist.genres.slice(0, 2).join(", ")}
+                                </p>
+                              ) : (
+                                <p className="text-xs text-[var(--muted)]">
+                                  No genres listed
+                                </p>
+                              )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                       Top albums
                     </p>
                     {profileFavorites.length === 0 ? (
@@ -1125,29 +1363,28 @@ export default function ProfilePage() {
                           return (
                             <div
                               key={albumId}
-                              className="border border-[color:var(--border)] p-3"
+                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
                             >
-                              <div className="text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                #{index + 1}
+                              <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
+                                {album?.image ? (
+                                  <img
+                                    src={album.image}
+                                    alt={`${album.name} cover`}
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                                    No art
+                                  </div>
+                                )}
                               </div>
-                              <div className="mt-2 flex items-center gap-3">
-                                <div className="h-12 w-12 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                                  {album?.image ? (
-                                    <img
-                                      src={album.image}
-                                      alt={`${album.name} cover`}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : null}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                                    {album?.name || "Album"}
-                                  </p>
-                                  <p className="text-xs text-[var(--muted)]">
-                                    {album?.artists?.join(", ") || albumId}
-                                  </p>
-                                </div>
+                              <div className="mt-3">
+                                <p className="text-sm font-semibold text-[var(--foreground)]">
+                                  {album?.name || "Album"}
+                                </p>
+                              <p className="min-h-[2rem] text-xs text-[var(--muted)]">
+                                {album?.artists?.join(", ") || albumId}
+                              </p>
                               </div>
                             </div>
                           );
@@ -1164,7 +1401,7 @@ export default function ProfilePage() {
                 <div className="flex flex-col gap-6 lg:flex-row">
                   <div className="w-full max-w-xs space-y-4">
                     <div className="flex items-center gap-4">
-                      <div className="relative h-20 w-20 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
+                      <div className="relative h-28 w-28 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
                         {avatarUrl ? (
                           <img
                             src={avatarUrl}
@@ -1248,6 +1485,115 @@ export default function ProfilePage() {
 
                     <div className="space-y-2">
                       <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                        Favorite artists
+                      </label>
+                      <input
+                        className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                        placeholder="Search for favorite artists"
+                        value={favoriteArtistQuery}
+                        onChange={(event) =>
+                          setFavoriteArtistQuery(event.target.value)
+                        }
+                      />
+                      {favoriteArtistSearching && (
+                        <p className="text-xs text-[var(--muted)]">
+                          Searching...
+                        </p>
+                      )}
+                      {favoriteArtistSuggestions.length > 0 &&
+                        favoriteArtistQuery.trim().length > 1 && (
+                          <div className="border border-[color:var(--border)] bg-[color:var(--surface)]">
+                            {favoriteArtistSuggestions.map((artist) => (
+                              <button
+                                key={artist.id}
+                                type="button"
+                                className="flex w-full items-center gap-3 border-b border-[color:var(--border)] px-4 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[color:var(--surface-strong)]"
+                                onClick={() => handleFavoriteArtistAdd(artist)}
+                              >
+                                <div className="aspect-square w-10 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
+                                  {artist.image ? (
+                                    <img
+                                      src={artist.image}
+                                      alt={`${artist.name} portrait`}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : null}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold">
+                                    {artist.name}
+                                  </p>
+                                  <p className="text-xs text-[var(--muted)]">
+                                    {artist.genres.slice(0, 2).join(", ") ||
+                                      "Artist"}
+                                  </p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      {favoriteArtistError && (
+                        <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                          {favoriteArtistError}
+                        </div>
+                      )}
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {favoriteArtistIds.length === 0 && (
+                          <p className="text-xs text-[var(--muted)]">
+                            Pick up to five artists.
+                          </p>
+                        )}
+                        {favoriteArtistIds.map((artistId, index) => {
+                          const artist = artistMap[artistId];
+                          return (
+                            <div
+                              key={artistId}
+                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
+                            >
+                              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                                <span>#{index + 1}</span>
+                                <button
+                                  type="button"
+                                  className="text-[var(--muted)] hover:text-[var(--foreground)]"
+                                  onClick={() =>
+                                    handleFavoriteArtistRemove(artistId)
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <div className="mt-3 space-y-3">
+                                <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
+                                  {artist?.image ? (
+                                    <img
+                                      src={artist.image}
+                                      alt={`${artist?.name || "Artist"} portrait`}
+                                      className="absolute inset-0 h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                                      No art
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                                    {artist?.name || "Artist"}
+                                  </p>
+                                  <p className="text-xs text-[var(--muted)]">
+                                    {artist?.genres?.slice(0, 2).join(", ") ||
+                                      "No genres listed"}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
                         Top 3 albums
                       </label>
                       <input
@@ -1270,7 +1616,7 @@ export default function ProfilePage() {
                               className="flex w-full items-center gap-3 border-b border-[color:var(--border)] px-4 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[color:var(--surface-strong)]"
                               onClick={() => handleFavoriteAdd(album)}
                             >
-                              <div className="h-10 w-10 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
+                              <div className="aspect-square w-10 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
                                 {album.image ? (
                                   <img
                                     src={album.image}
@@ -1307,10 +1653,9 @@ export default function ProfilePage() {
                           return (
                             <div
                               key={albumId}
-                              className="border border-[color:var(--border)] p-3"
+                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
                             >
-                              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                <span>#{index + 1}</span>
+                              <div className="flex items-center justify-end text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
                                 <button
                                   type="button"
                                   className="text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -1319,21 +1664,25 @@ export default function ProfilePage() {
                                   Remove
                                 </button>
                               </div>
-                              <div className="mt-2 flex items-center gap-3">
-                                <div className="h-12 w-12 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
+                              <div className="mt-3">
+                                <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
                                   {album?.image ? (
                                     <img
                                       src={album.image}
                                       alt={`${album.name} cover`}
-                                      className="h-full w-full object-cover"
+                                      className="absolute inset-0 h-full w-full object-cover"
                                     />
-                                  ) : null}
+                                  ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                                      No art
+                                    </div>
+                                  )}
                                 </div>
-                                <div>
+                                <div className="mt-3">
                                   <p className="text-sm font-semibold text-[var(--foreground)]">
                                     {album?.name || "Album"}
                                   </p>
-                                  <p className="text-xs text-[var(--muted)]">
+                                  <p className="min-h-[2rem] text-xs text-[var(--muted)]">
                                     {album?.artists?.join(", ") || albumId}
                                   </p>
                                 </div>
@@ -1365,8 +1714,69 @@ export default function ProfilePage() {
         )}
 
         {user && (
-          <section className="space-y-6 border border-[color:var(--border)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="space-y-4 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+            <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                Recent activity
+              </h2>
+              <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+                Latest first
+              </span>
+            </div>
+
+            {recentActivity.length === 0 && (
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5 text-sm text-[var(--muted)]">
+                No activity yet. Start reviewing albums or making lists.
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {recentActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex flex-wrap items-center justify-between gap-3 border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                      <span>
+                        {activity.type === "review"
+                          ? "Reviewed"
+                          : "Created list"}
+                      </span>
+                      {activity.type === "review" && (
+                        <span className="text-[var(--accent-strong)]">
+                          {activity.rating}/10
+                        </span>
+                      )}
+                    </div>
+                    {activity.href ? (
+                      <Link
+                        href={activity.href}
+                        className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--accent)]"
+                      >
+                        {activity.title}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-semibold text-[var(--foreground)]">
+                        {activity.title}
+                      </p>
+                    )}
+                    <p className="text-xs text-[var(--muted)]">
+                      {activity.subtitle}
+                    </p>
+                  </div>
+                  <div className="text-xs text-[var(--muted)]">
+                    {formatDate(activity.created_at)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {user && (
+          <section className="space-y-6 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">
                 Community
               </h2>
@@ -1409,7 +1819,7 @@ export default function ProfilePage() {
                     </p>
                   )}
                 {followResults.length > 0 && (
-                  <div className="border border-[color:var(--border)] bg-[color:var(--surface)]">
+                  <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
                     {followResults.map((person) => {
                       const isFollowing = followingIds.includes(person.id);
                       return (
@@ -1482,7 +1892,7 @@ export default function ProfilePage() {
                     {following.map((person) => (
                       <div
                         key={`following-${person.id}`}
-                        className="flex items-center justify-between gap-3 border border-[color:var(--border)] px-3 py-2"
+                        className="flex items-center justify-between gap-3 border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2"
                       >
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
@@ -1542,7 +1952,7 @@ export default function ProfilePage() {
                       return (
                         <div
                           key={`follower-${person.id}`}
-                          className="flex items-center justify-between gap-3 border border-[color:var(--border)] px-3 py-2"
+                          className="flex items-center justify-between gap-3 border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2"
                         >
                           <div className="flex items-center gap-3">
                             <div className="h-9 w-9 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
@@ -1600,8 +2010,8 @@ export default function ProfilePage() {
         )}
 
         {user && (
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <section className="space-y-4 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--border)] pb-4">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">
                 Lists
               </h2>
@@ -1619,7 +2029,7 @@ export default function ProfilePage() {
             </div>
 
             {listsLoading && (
-              <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
                 Loading lists...
               </div>
             )}
@@ -1637,7 +2047,7 @@ export default function ProfilePage() {
             )}
 
             {!listsLoading && lists.length === 0 && (
-              <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
                 No lists yet. Create one to start collecting albums.
               </div>
             )}
@@ -1646,7 +2056,7 @@ export default function ProfilePage() {
               {lists.map((list) => (
                 <div
                   key={list.id}
-                  className="border border-[color:var(--border)] p-5 transition hover:border-[var(--accent)]"
+                  className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5 transition hover:border-[var(--accent)]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -1660,6 +2070,18 @@ export default function ProfilePage() {
                         <p className="text-xs text-[var(--muted)]">
                           {list.description}
                         </p>
+                      )}
+                      {list.tags && list.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                          {list.tags.map((tag) => (
+                            <span
+                              key={`${list.id}-${tag}`}
+                              className="border border-[color:var(--border)] px-2 py-1"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -1722,8 +2144,8 @@ export default function ProfilePage() {
         )}
 
         {user && (
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
+          <section className="space-y-4 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
+            <div className="flex items-center justify-between border-b border-[color:var(--border)] pb-4">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">
                 Reviews
               </h2>
@@ -1733,7 +2155,7 @@ export default function ProfilePage() {
             </div>
 
             {loading && (
-              <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
                 Loading reviews...
               </div>
             )}
@@ -1745,7 +2167,7 @@ export default function ProfilePage() {
             )}
 
             {!loading && reviews.length === 0 && (
-              <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
+              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
                 No reviews yet. Head back to search and rate an album.
               </div>
             )}
@@ -1756,7 +2178,7 @@ export default function ProfilePage() {
                 return (
                   <div
                     key={review.id}
-                    className="flex flex-col gap-4 border border-[color:var(--border)] p-5 md:flex-row md:items-start"
+                    className="flex flex-col gap-4 border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5 md:flex-row md:items-start"
                   >
                     <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
                       {album?.image ? (

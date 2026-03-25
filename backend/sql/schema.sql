@@ -6,9 +6,13 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT,
   favorite_genres TEXT[],
   favorite_album_ids TEXT[],
+  favorite_artist_ids TEXT[],
   refresh_token TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS favorite_artist_ids TEXT[];
 
 CREATE TABLE IF NOT EXISTS reviews (
   id SERIAL PRIMARY KEY,
@@ -59,6 +63,16 @@ CREATE TABLE IF NOT EXISTS list_comments (
 
 CREATE INDEX IF NOT EXISTS idx_list_comments_list ON list_comments (list_id);
 CREATE INDEX IF NOT EXISTS idx_list_comments_user ON list_comments (user_id);
+
+CREATE TABLE IF NOT EXISTS list_tags (
+  list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+  tag TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (list_id, tag)
+);
+
+CREATE INDEX IF NOT EXISTS idx_list_tags_list ON list_tags (list_id);
+CREATE INDEX IF NOT EXISTS idx_list_tags_tag ON list_tags (tag);
 
 CREATE TABLE IF NOT EXISTS follows (
   follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
