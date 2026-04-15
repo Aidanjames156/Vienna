@@ -163,6 +163,87 @@ function extractListTags(input) {
   return Array.from(new Set(cleaned));
 }
 
+function normalizeChartRegion(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!raw) {
+    return 'global';
+  }
+  if (raw === 'global') {
+    return 'global';
+  }
+  if (/^[a-z]{2}$/.test(raw)) {
+    return raw;
+  }
+  return 'global';
+}
+
+function parseCsvLine(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === ',' && !inQuotes) {
+      fields.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  fields.push(current);
+  return fields;
+}
+
+function extractTrackIdsFromChartCsv(csvText, maxTracks = 50) {
+  if (typeof csvText !== 'string' || !csvText.trim()) {
+    return [];
+  }
+  const lines = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const header = parseCsvLine(lines[0]).map((field) => field.trim().toLowerCase());
+  let urlIndex = header.indexOf('url');
+  if (urlIndex < 0) {
+    urlIndex = header.findIndex((field) => field.includes('url'));
+  }
+  if (urlIndex < 0) {
+    return [];
+  }
+
+  const ids = [];
+  const seen = new Set();
+  for (let i = 1; i < lines.length; i += 1) {
+    const fields = parseCsvLine(lines[i]);
+    const url = fields[urlIndex] || '';
+    const match = String(url).match(/open\.spotify\.com\/track\/([A-Za-z0-9]{22})/);
+    if (!match) {
+      continue;
+    }
+    const id = match[1];
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= maxTracks) {
+      break;
+    }
+  }
+  return ids;
+}
+
 async function getUserRefreshToken(userId) {
   const result = await pool.query(
     'SELECT refresh_token FROM users WHERE id = $1',
@@ -674,95 +755,68 @@ app.get('/spotify/trending', rateLimit, async (req, res) => {
 
   try {
     const { accessToken, cacheKey } = await getAccessContext(req);
-    const cacheId = `${cacheKey}:trending:${limit}`;
+    const rawPlaylist =
+      typeof process.env.SPOTIFY_TRENDING_PLAYLIST_ID === 'string'
+        ? process.env.SPOTIFY_TRENDING_PLAYLIST_ID.trim()
+        : '';
+    const cleanedPlaylist = rawPlaylist
+      .replace(/^['"]|['"]$/g, '')
+      .replace('spotify:playlist:', '')
+      .replace('https://open.spotify.com/playlist/', '')
+      .replace('http://open.spotify.com/playlist/', '')
+      .split('?')[0]
+      .trim();
+    const playlistId = cleanedPlaylist || '37i9dQZEVXbMDoHDwVN2tF';
+
+    const cacheId = `${cacheKey}:trending:playlist:${playlistId}:${limit}`;
     const cached = getCached(trendingCache, cacheId);
     if (cached) {
       res.set('X-Cache', 'HIT');
       return res.json(cached);
     }
 
-    const releasesUrl = new URL('https://api.spotify.com/v1/browse/new-releases');
-    releasesUrl.searchParams.set('limit', '50');
-
-    const releaseData = await fetchSpotifyJson(accessToken, releasesUrl.toString());
-    const releaseItems = Array.isArray(releaseData.albums?.items)
-      ? releaseData.albums.items
-      : [];
-
-    const releaseIds = Array.from(
-      new Set(
-        releaseItems
-          .map((item) => item?.id)
-          .filter((id) => typeof id === 'string' && id.length > 0)
-      )
+    const tracksUrl = new URL(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`);
+    tracksUrl.searchParams.set('limit', '50');
+    tracksUrl.searchParams.set(
+      'fields',
+      'items(track(id,name,popularity,album(id,name,release_date,total_tracks,images,artists(name))))'
     );
 
-    if (releaseIds.length === 0) {
-      const payload = { albums: [] };
-      setCached(trendingCache, cacheId, payload, trendingCacheTtlMs);
-      res.set('X-Cache', 'MISS');
-      return res.json(payload);
+    let playlistData;
+    try {
+      playlistData = await fetchSpotifyJson(accessToken, tracksUrl.toString());
+    } catch (err) {
+      console.error(err);
+      return res.status(503).json({ error: 'spotify_trending_unavailable' });
     }
 
-    const chunks = [];
-    for (let i = 0; i < releaseIds.length; i += 20) {
-      chunks.push(releaseIds.slice(i, i + 20));
-    }
+    const items = Array.isArray(playlistData.items) ? playlistData.items : [];
+    const albums = [];
+    const seen = new Set();
 
-    const detailResults = await Promise.all(
-      chunks.map((chunk) =>
-        fetchSpotifyJson(
-          accessToken,
-          `https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`
-        )
-      )
-    );
-
-    const detailedAlbums = detailResults.flatMap((result) =>
-      Array.isArray(result.albums) ? result.albums : []
-    );
-
-    const mappedAlbums = detailedAlbums
-      .filter(Boolean)
-      .map((album) => ({
+    for (const item of items) {
+      const album = item?.track?.album;
+      if (!album?.id || !isValidSpotifyId(album.id)) {
+        continue;
+      }
+      if (seen.has(album.id)) {
+        continue;
+      }
+      seen.add(album.id);
+      albums.push({
         id: album.id,
         name: album.name,
         artists: album.artists?.map((artist) => artist.name) || [],
         image: album.images?.[1]?.url || album.images?.[0]?.url || null,
         release_date: album.release_date,
         total_tracks: album.total_tracks,
-        popularity: typeof album.popularity === 'number' ? album.popularity : 0,
-      }));
-
-    const deduped = [];
-    const seen = new Map();
-    mappedAlbums.forEach((album) => {
-      if (!album) {
-        return;
+      });
+      if (albums.length >= limit) {
+        break;
       }
-      const nameKey = (album.name || '').trim().toLowerCase();
-      const artistKey = (album.artists?.[0] || '').trim().toLowerCase();
-      const key = `${nameKey}|${artistKey}`;
-      const existingIndex = seen.get(key);
-      if (typeof existingIndex !== 'number') {
-        seen.set(key, deduped.length);
-        deduped.push(album);
-        return;
-      }
-      const existing = deduped[existingIndex];
-      if (
-        (album.popularity || 0) > (existing.popularity || 0) ||
-        (!existing.image && album.image)
-      ) {
-        deduped[existingIndex] = album;
-      }
-    });
+    }
 
-    const albums = deduped
-      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
-      .slice(0, limit);
-
-    const payload = { albums };
+    const payload = { albums, source: 'playlist', playlist_id: playlistId };
     setCached(trendingCache, cacheId, payload, trendingCacheTtlMs);
     res.set('X-Cache', 'MISS');
     return res.json(payload);

@@ -20,6 +20,25 @@ type Review = {
   pinned_at?: string | null;
 };
 
+type RecentActivityItem =
+  | {
+      id: string;
+      type: "review";
+      created_at: string;
+      title: string;
+      subtitle: string;
+      rating: number;
+      href: string;
+    }
+  | {
+      id: string;
+      type: "list";
+      created_at: string;
+      title: string;
+      subtitle: string;
+      href: string;
+    };
+
 type ListItem = {
   spotify_album_id: string;
   created_at: string;
@@ -166,7 +185,7 @@ export default function ProfilePage() {
   const recentReviews = useMemo(() => reviews, [reviews]);
 
   const recentActivity = useMemo(() => {
-    const items = [];
+    const items: RecentActivityItem[] = [];
 
     reviews.forEach((review) => {
       const album = albumMap[review.spotify_album_id];
