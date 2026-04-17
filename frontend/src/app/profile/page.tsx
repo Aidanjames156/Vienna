@@ -1193,7 +1193,7 @@ export default function ProfilePage() {
                   <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
                     {albumMap[pinnedReview.spotify_album_id]?.image ? (
                       <img
-                        src={albumMap[pinnedReview.spotify_album_id].image}
+                        src={albumMap[pinnedReview.spotify_album_id].image ?? undefined}
                         alt={`${albumMap[pinnedReview.spotify_album_id].name} cover`}
                         className="absolute inset-0 h-full w-full object-cover"
                       />
