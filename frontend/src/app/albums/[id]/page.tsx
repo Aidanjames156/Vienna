@@ -678,24 +678,24 @@ export default function AlbumPage() {
             <form
               onSubmit={handleReviewSubmit}
               style={{
-                border: "1px solid var(--line-strong)",
-                padding: 20,
                 display: "grid",
-                gap: 14,
-                marginBottom: 32,
+                gap: 18,
+                marginBottom: 40,
+                paddingBottom: 32,
+                borderBottom: "1px solid var(--line)",
               }}
             >
               <div
                 className="display"
-                style={{ fontSize: 24, fontStyle: "italic" }}
+                style={{ fontSize: 28, fontStyle: "italic" }}
               >
                 {user ? "Log your listen" : "Sign in to leave a review"}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <span className="eyebrow">Rating</span>
                 <select
-                  className="input"
-                  style={{ width: 90 }}
+                  className="field-line"
+                  style={{ fontSize: 18, paddingRight: 24 }}
                   value={ratingValue}
                   onChange={(event) => setRatingValue(event.target.value)}
                   disabled={!user}
@@ -709,29 +709,37 @@ export default function AlbumPage() {
                   )}
                 </select>
                 <span className="eyebrow">/ 10</span>
-                <Stars value={rating10ToStars(Number(ratingValue))} />
+                <Stars value={rating10ToStars(Number(ratingValue))} size={18} />
               </div>
               <textarea
-                className="input"
-                style={{ minHeight: 110 }}
+                className="field-line"
+                style={{ minHeight: 64, resize: "vertical" }}
                 placeholder="Write your review (optional)"
                 value={bodyValue}
                 onChange={(event) => setBodyValue(event.target.value)}
                 disabled={!user}
               />
               {reviewError && <div className="note">{reviewError}</div>}
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div>
                 {user ? (
-                  <button
-                    type="submit"
-                    className="btn primary"
-                    disabled={submitting}
-                  >
-                    {submitting ? "Posting…" : "Post review"}
+                  <button type="submit" className="text-btn" disabled={submitting}>
+                    {submitting ? (
+                      "Posting…"
+                    ) : (
+                      <>
+                        Post review
+                        <span aria-hidden="true">→</span>
+                      </>
+                    )}
                   </button>
                 ) : (
-                  <a className="btn primary" href={`${apiUrl}/auth/spotify`}>
+                  <a
+                    className="btn primary"
+                    href={`${apiUrl}/auth/spotify`}
+                    style={{ gap: 8 }}
+                  >
                     Continue with Spotify
+                    <span aria-hidden="true">→</span>
                   </a>
                 )}
               </div>
