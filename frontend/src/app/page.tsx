@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Shell } from "@/components/Shell";
 import { SectionHead } from "@/components/SectionHead";
 import { AlbumCover } from "@/components/AlbumCover";
@@ -19,6 +19,19 @@ type TrendingAlbum = {
   artists: string[];
   image: string | null;
   popularity?: number;
+};
+
+// Understated underlined arrow-link — the editorial "more →" idiom, sized as a
+// hero secondary CTA so the solid primary button stays the single focal action.
+const quietLink: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 13,
+  fontWeight: 500,
+  color: "var(--ink)",
+  borderBottom: "1px solid var(--ink)",
+  paddingBottom: 2,
 };
 
 export default function Home() {
@@ -126,23 +139,27 @@ export default function Home() {
               A living diary of the records that shaped your year. Save
               ratings, write reviews, curate ranked lists.
             </p>
-            <div style={{ display: "flex", gap: 10, marginTop: 28 }}>
+            <div style={{ display: "flex", gap: 20, marginTop: 28, alignItems: "center" }}>
               {!authChecked ? null : user ? (
                 <>
-                  <Link href="/search" className="btn primary">
+                  <Link href="/search" className="btn primary" style={{ gap: 8 }}>
                     Log a listen
+                    <span aria-hidden="true">→</span>
                   </Link>
-                  <Link href="/profile" className="btn">
+                  <Link href="/profile" style={quietLink}>
                     Your profile
+                    <span aria-hidden="true">→</span>
                   </Link>
                 </>
               ) : (
                 <>
-                  <a className="btn primary" href={`${apiUrl}/auth/spotify`}>
+                  <a className="btn primary" href={`${apiUrl}/auth/spotify`} style={{ gap: 8 }}>
                     Continue with Spotify
+                    <span aria-hidden="true">→</span>
                   </a>
-                  <Link href="/search" className="btn">
+                  <Link href="/search" style={quietLink}>
                     Explore albums
+                    <span aria-hidden="true">→</span>
                   </Link>
                 </>
               )}

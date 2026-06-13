@@ -128,6 +128,51 @@ input, textarea, select {
   color: var(--ink);
 }
 
+/* editorial search line: transparent input + plain text button, sharing a
+   single ink rule that runs across the whole row (no box, no fill) */
+.search-field {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  border-bottom: 1px solid var(--ink);
+}
+.search-field:focus-within {
+  border-bottom-color: var(--accent);
+}
+.search-field input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  font-size: 18px;
+  color: var(--ink);
+  outline: none;
+}
+.search-field input::placeholder {
+  color: var(--muted);
+}
+.search-field button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.search-field button:hover:not(:disabled) {
+  color: var(--accent);
+}
+.search-field button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

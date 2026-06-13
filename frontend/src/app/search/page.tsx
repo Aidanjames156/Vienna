@@ -122,32 +122,24 @@ export default function SearchPage() {
           {/* search form */}
           <form
             onSubmit={handleSearch}
-            style={{
-              display: "flex",
-              gap: 10,
-              marginTop: 28,
-              maxWidth: 640,
-            }}
+            className="search-field"
+            style={{ marginTop: 28, maxWidth: 640 }}
           >
             <input
-              className="input"
-              style={{ flex: 1, padding: "12px 16px", fontSize: 14 }}
               placeholder="Search for an album or artist"
               aria-label="Search for an album or artist"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <button
-              type="submit"
-              className="btn primary"
-              disabled={!canSearch || loadingSearch}
-              style={
-                !canSearch || loadingSearch
-                  ? { opacity: 0.5, cursor: "not-allowed" }
-                  : undefined
-              }
-            >
-              {loadingSearch ? "Searching…" : "Search"}
+            <button type="submit" disabled={!canSearch || loadingSearch}>
+              {loadingSearch ? (
+                "Searching…"
+              ) : (
+                <>
+                  Search
+                  <span aria-hidden="true">→</span>
+                </>
+              )}
             </button>
           </form>
           {!canSearch && query.trim().length > 0 && (
