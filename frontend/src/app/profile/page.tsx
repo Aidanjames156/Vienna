@@ -1266,16 +1266,24 @@ export default function ProfilePage() {
                     </span>
                   ))}
                 </h1>
-                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                <div style={{ display: "flex", gap: 20, marginTop: 20, alignItems: "center" }}>
                   <button
                     type="button"
-                    className="btn primary"
+                    className="quiet-link"
                     onClick={() => handleEditToggle(!editingProfile)}
                   >
-                    {editingProfile ? "Cancel editing" : "Edit profile"}
+                    {editingProfile ? (
+                      "Cancel editing"
+                    ) : (
+                      <>
+                        Edit profile
+                        <span aria-hidden="true">→</span>
+                      </>
+                    )}
                   </button>
-                  <Link href="/search" className="btn">
+                  <Link href="/search" className="quiet-link">
                     Log a listen
+                    <span aria-hidden="true">→</span>
                   </Link>
                 </div>
               </div>

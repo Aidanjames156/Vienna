@@ -218,6 +218,28 @@ input, textarea, select {
   cursor: not-allowed;
 }
 
+/* understated underlined arrow-link — hero/profile secondary CTA.
+   Button-safe: resets native button chrome but keeps the underline. */
+.quiet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  padding: 0 0 2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.quiet-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

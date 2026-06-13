@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { SectionHead } from "@/components/SectionHead";
 import { AlbumCover } from "@/components/AlbumCover";
@@ -19,19 +19,6 @@ type TrendingAlbum = {
   artists: string[];
   image: string | null;
   popularity?: number;
-};
-
-// Understated underlined arrow-link — the editorial "more →" idiom, sized as a
-// hero secondary CTA so the solid primary button stays the single focal action.
-const quietLink: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  fontSize: 13,
-  fontWeight: 500,
-  color: "var(--ink)",
-  borderBottom: "1px solid var(--ink)",
-  paddingBottom: 2,
 };
 
 export default function Home() {
@@ -146,7 +133,7 @@ export default function Home() {
                     Log a listen
                     <span aria-hidden="true">→</span>
                   </Link>
-                  <Link href="/profile" style={quietLink}>
+                  <Link href="/profile" className="quiet-link">
                     Your profile
                     <span aria-hidden="true">→</span>
                   </Link>
@@ -157,7 +144,7 @@ export default function Home() {
                     Continue with Spotify
                     <span aria-hidden="true">→</span>
                   </a>
-                  <Link href="/search" style={quietLink}>
+                  <Link href="/search" className="quiet-link">
                     Explore albums
                     <span aria-hidden="true">→</span>
                   </Link>
