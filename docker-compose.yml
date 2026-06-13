@@ -19,7 +19,9 @@ services:
   backend:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev"
+    # -L = nodemon legacy/polling watch, required for file-change detection over
+    # the Windows bind mount (native fs events don't cross the host boundary).
+    command: sh -c "npm install && npm run dev -- -L"
     ports:
       - 4000:4000
     env_file:

@@ -755,68 +755,84 @@ app.get('/spotify/trending', rateLimit, async (req, res) => {
 
   try {
     const { accessToken, cacheKey } = await getAccessContext(req);
-    const rawPlaylist =
-      typeof process.env.SPOTIFY_TRENDING_PLAYLIST_ID === 'string'
-        ? process.env.SPOTIFY_TRENDING_PLAYLIST_ID.trim()
-        : '';
-    const cleanedPlaylist = rawPlaylist
-      .replace(/^['"]|['"]$/g, '')
-      .replace('spotify:playlist:', '')
-      .replace('https://open.spotify.com/playlist/', '')
-      .replace('http://open.spotify.com/playlist/', '')
-      .split('?')[0]
-      .trim();
-    const playlistId = cleanedPlaylist || '37i9dQZEVXbMDoHDwVN2tF';
 
-    const cacheId = `${cacheKey}:trending:playlist:${playlistId}:${limit}`;
+    const cacheId = `${cacheKey}:trending:new-releases:${limit}`;
     const cached = getCached(trendingCache, cacheId);
     if (cached) {
       res.set('X-Cache', 'HIT');
       return res.json(cached);
     }
 
-    const tracksUrl = new URL(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`);
-    tracksUrl.searchParams.set('limit', '50');
-    tracksUrl.searchParams.set(
-      'fields',
-      'items(track(id,name,popularity,album(id,name,release_date,total_tracks,images,artists(name))))'
-    );
+    // Candidate pool: Spotify New Releases. This replaces the editorial Top-50
+    // playlist, which Spotify removed from the Web API in Nov 2024 (404s now).
+    const releasesUrl = new URL('https://api.spotify.com/v1/browse/new-releases');
+    releasesUrl.searchParams.set('limit', '50');
 
-    let playlistData;
+    let releasesData;
     try {
-      playlistData = await fetchSpotifyJson(accessToken, tracksUrl.toString());
+      releasesData = await fetchSpotifyJson(accessToken, releasesUrl.toString());
     } catch (err) {
       console.error(err);
       return res.status(503).json({ error: 'spotify_trending_unavailable' });
     }
 
-    const items = Array.isArray(playlistData.items) ? playlistData.items : [];
-    const albums = [];
+    const candidates = Array.isArray(releasesData.albums?.items)
+      ? releasesData.albums.items
+      : [];
+    const candidateIds = [];
     const seen = new Set();
-
-    for (const item of items) {
-      const album = item?.track?.album;
-      if (!album?.id || !isValidSpotifyId(album.id)) {
-        continue;
-      }
-      if (seen.has(album.id)) {
+    for (const album of candidates) {
+      if (!album?.id || !isValidSpotifyId(album.id) || seen.has(album.id)) {
         continue;
       }
       seen.add(album.id);
-      albums.push({
-        id: album.id,
-        name: album.name,
-        artists: album.artists?.map((artist) => artist.name) || [],
-        image: album.images?.[1]?.url || album.images?.[0]?.url || null,
-        release_date: album.release_date,
-        total_tracks: album.total_tracks,
-      });
-      if (albums.length >= limit) {
-        break;
-      }
+      candidateIds.push(album.id);
     }
 
-    const payload = { albums, source: 'playlist', playlist_id: playlistId };
+    const mapAlbum = (album) => ({
+      id: album.id,
+      name: album.name,
+      artists: album.artists?.map((artist) => artist.name) || [],
+      image: album.images?.[1]?.url || album.images?.[0]?.url || null,
+      release_date: album.release_date,
+      total_tracks: album.total_tracks,
+    });
+
+    // New-releases items are simplified objects without `popularity`, so fetch the
+    // full album objects (<=20 ids per call) and rank by Spotify's popularity score.
+    const idChunks = [];
+    for (let i = 0; i < candidateIds.length; i += 20) {
+      idChunks.push(candidateIds.slice(i, i + 20));
+    }
+
+    let albums;
+    try {
+      const chunkResults = await Promise.all(
+        idChunks.map((chunk) => {
+          const albumsUrl = new URL('https://api.spotify.com/v1/albums');
+          albumsUrl.searchParams.set('ids', chunk.join(','));
+          return fetchSpotifyJson(accessToken, albumsUrl.toString());
+        })
+      );
+      albums = chunkResults
+        .flatMap((result) => (Array.isArray(result.albums) ? result.albums : []))
+        .filter(Boolean)
+        .map((album) => ({
+          ...mapAlbum(album),
+          popularity: typeof album.popularity === 'number' ? album.popularity : 0,
+        }))
+        .sort((a, b) => b.popularity - a.popularity)
+        .slice(0, limit);
+    } catch (err) {
+      // Enrichment failed — fall back to release order without the popularity sort.
+      console.warn('Trending popularity enrichment failed; using release order.', err?.message);
+      albums = candidates
+        .filter((album) => album?.id && isValidSpotifyId(album.id))
+        .map(mapAlbum)
+        .slice(0, limit);
+    }
+
+    const payload = { albums, source: 'new-releases' };
     setCached(trendingCache, cacheId, payload, trendingCacheTtlMs);
     res.set('X-Cache', 'MISS');
     return res.json(payload);
