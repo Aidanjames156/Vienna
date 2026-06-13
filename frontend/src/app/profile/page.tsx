@@ -3,6 +3,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Shell } from "@/components/Shell";
+import { SectionHead } from "@/components/SectionHead";
+import { AlbumCover } from "@/components/AlbumCover";
+import { Stars, rating10ToStars } from "@/components/Stars";
 
 type User = {
   id: number;
@@ -19,25 +23,6 @@ type Review = {
   is_pinned?: boolean;
   pinned_at?: string | null;
 };
-
-type RecentActivityItem =
-  | {
-      id: string;
-      type: "review";
-      created_at: string;
-      title: string;
-      subtitle: string;
-      rating: number;
-      href: string;
-    }
-  | {
-      id: string;
-      type: "list";
-      created_at: string;
-      title: string;
-      subtitle: string;
-      href: string;
-    };
 
 type ListItem = {
   spotify_album_id: string;
@@ -170,55 +155,82 @@ export default function ProfilePage() {
       .filter((genre) => genre.length > 0);
   }, [genresInput]);
 
-  const pinnedReview = useMemo(() => {
-    return (
-      reviews
-        .filter((review) => review.is_pinned)
-        .sort((a, b) => {
-          const aTime = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
-          const bTime = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
-          return bTime - aTime;
-        })[0] || null
-    );
+  // pinned first (most recently pinned), filled to three with highest-rated
+  const pinnedColumns = useMemo(() => {
+    const pinned = reviews
+      .filter((review) => review.is_pinned)
+      .sort((a, b) => {
+        const aTime = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+        const bTime = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+        return bTime - aTime;
+      });
+    if (pinned.length >= 3) {
+      return pinned.slice(0, 3);
+    }
+    const filler = reviews
+      .filter((review) => !review.is_pinned)
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, 3 - pinned.length);
+    return [...pinned, ...filler];
   }, [reviews]);
 
-  const recentReviews = useMemo(() => reviews, [reviews]);
-
-  const recentActivity = useMemo(() => {
-    const items: RecentActivityItem[] = [];
-
-    reviews.forEach((review) => {
-      const album = albumMap[review.spotify_album_id];
-      items.push({
-        id: `review-${review.id}`,
-        type: "review",
-        created_at: review.created_at,
-        title: album?.name || "Album",
-        subtitle: album?.artists?.join(", ") || review.spotify_album_id,
-        rating: review.rating,
-        href: `/albums/${review.spotify_album_id}`,
-      });
-    });
-
-    lists.forEach((list) => {
-      items.push({
-        id: `list-${list.id}`,
-        type: "list",
-        created_at: list.created_at,
-        title: list.title,
-        subtitle: list.description || "New list",
-        href: `/lists/${list.id}`,
-      });
-    });
-
-    return items
-      .sort(
+  const recentReviews = useMemo(
+    () =>
+      [...reviews].sort(
         (a, b) =>
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-      )
-      .slice(0, 10);
-  }, [reviews, lists, albumMap]);
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+    [reviews]
+  );
+
+  const totalThisYear = useMemo(
+    () =>
+      reviews.filter(
+        (review) =>
+          new Date(review.created_at).getFullYear() === new Date().getFullYear()
+      ).length,
+    [reviews]
+  );
+
+  const highRatedCount = useMemo(
+    () => reviews.filter((review) => review.rating >= 9).length,
+    [reviews]
+  );
+
+  // Year-in-listening cells: 53 weeks x 7 days, tinted by day's log count
+  const yearCells = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const jan1 = new Date(year, 0, 1);
+    const counts: Record<string, number> = {};
+    for (const review of reviews) {
+      const d = new Date(review.created_at);
+      if (d.getFullYear() !== year) continue;
+      const key = `${d.getMonth()}-${d.getDate()}`;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    const cells: { level: number; date: Date }[] = [];
+    for (let w = 0; w < 53; w++) {
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(jan1);
+        day.setDate(jan1.getDate() + w * 7 + d - jan1.getDay());
+        const key = `${day.getMonth()}-${day.getDate()}`;
+        const count = counts[key] || 0;
+        const level =
+          count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count <= 4 ? 3 : 4;
+        cells.push({ level, date: day });
+      }
+    }
+    return cells;
+  }, [reviews]);
+
+  const yearShades = [
+    "var(--bg-strong)",
+    "#e4d6b8",
+    "#c9a36a",
+    "#8a6a3a",
+    "#3a2a1a",
+  ];
 
   const avatarInitial = (
     displayName || user?.spotify_id || "J"
@@ -253,7 +265,7 @@ export default function ProfilePage() {
           setUser(data.user || null);
           setAuthChecked(true);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setUser(null);
           setAuthChecked(true);
@@ -302,7 +314,7 @@ export default function ProfilePage() {
           setFavoriteArtistIds(nextProfile?.favorite_artist_ids || []);
           setAvatarUrl(nextProfile?.avatar_url || null);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setProfileError("Could not load profile.");
         }
@@ -342,7 +354,7 @@ export default function ProfilePage() {
         if (!cancelled) {
           setReviews(Array.isArray(data.reviews) ? data.reviews : []);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setError("Could not load reviews.");
         }
@@ -382,7 +394,7 @@ export default function ProfilePage() {
         if (!cancelled) {
           setLists(Array.isArray(data.lists) ? data.lists : []);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setListsError("Could not load lists.");
         }
@@ -437,7 +449,7 @@ export default function ProfilePage() {
           setFollowing(nextFollowing);
           setFollowingIds(nextFollowing.map((person: UserSummary) => person.id));
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setFollowActionError("Could not load follow data.");
         }
@@ -481,7 +493,7 @@ export default function ProfilePage() {
 
         const data = await response.json();
         setFollowResults(Array.isArray(data.users) ? data.users : []);
-      } catch (err) {
+      } catch {
         setFollowError("Could not search users.");
         setFollowResults([]);
       } finally {
@@ -509,7 +521,7 @@ export default function ProfilePage() {
         );
         const data = await response.json();
         setFavoriteSuggestions(Array.isArray(data.albums) ? data.albums : []);
-      } catch (err) {
+      } catch {
         setFavoriteSuggestions([]);
       } finally {
         setFavoriteSearching(false);
@@ -538,7 +550,7 @@ export default function ProfilePage() {
         setFavoriteArtistSuggestions(
           Array.isArray(data.artists) ? data.artists : []
         );
-      } catch (err) {
+      } catch {
         setFavoriteArtistSuggestions([]);
       } finally {
         setFavoriteArtistSearching(false);
@@ -609,7 +621,7 @@ export default function ProfilePage() {
             return next;
           });
         }
-      } catch (err) {
+      } catch {
         // ignore album enrichment errors
       }
     }
@@ -679,7 +691,7 @@ export default function ProfilePage() {
             return next;
           });
         }
-      } catch (err) {
+      } catch {
         // ignore artist enrichment errors
       }
     }
@@ -690,12 +702,12 @@ export default function ProfilePage() {
     };
   }, [apiUrl, favoriteArtistIds, artistMap]);
 
-  function formatDate(value: string) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-    return date.toLocaleDateString();
+  async function handleLogout() {
+    await fetch(`${apiUrl}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    setUser(null);
   }
 
   async function handleProfileSave(event: React.FormEvent<HTMLFormElement>) {
@@ -764,7 +776,7 @@ export default function ProfilePage() {
           : prev
       );
       setEditingProfile(false);
-    } catch (err) {
+    } catch {
       setProfileError("Could not update profile.");
     } finally {
       setProfileSaving(false);
@@ -807,7 +819,7 @@ export default function ProfilePage() {
           prev ? { ...prev, avatar_url: data.avatar_url } : prev
         );
       }
-    } catch (err) {
+    } catch {
       setProfileError("Could not upload photo.");
     } finally {
       setAvatarUploading(false);
@@ -925,7 +937,7 @@ export default function ProfilePage() {
         );
         setEditingReviewId(null);
       }
-    } catch (err) {
+    } catch {
       setReviewActionError("Could not update review.");
     } finally {
       setReviewSaving(false);
@@ -951,7 +963,7 @@ export default function ProfilePage() {
       }
 
       setReviews((prev) => prev.filter((review) => review.id !== reviewId));
-    } catch (err) {
+    } catch {
       setReviewActionError("Could not delete review.");
     } finally {
       setReviewDeleting(null);
@@ -993,7 +1005,7 @@ export default function ProfilePage() {
           )
         );
       }
-    } catch (err) {
+    } catch {
       setReviewActionError("Could not update pinned reviews.");
     } finally {
       setReviewPinning(null);
@@ -1024,7 +1036,7 @@ export default function ProfilePage() {
       }
 
       setLists((prev) => prev.filter((list) => list.id !== listId));
-    } catch (err) {
+    } catch {
       setListActionError("Could not delete list.");
     } finally {
       setListDeleting(null);
@@ -1064,7 +1076,7 @@ export default function ProfilePage() {
             : [target, ...prev]
         );
       }
-    } catch (err) {
+    } catch {
       setFollowActionError("Could not follow user.");
     } finally {
       setFollowUpdatingId(null);
@@ -1092,1144 +1104,1160 @@ export default function ProfilePage() {
 
       setFollowingIds((prev) => prev.filter((id) => id !== targetId));
       setFollowing((prev) => prev.filter((person) => person.id !== targetId));
-    } catch (err) {
+    } catch {
       setFollowActionError("Could not unfollow user.");
     } finally {
       setFollowUpdatingId(null);
     }
   }
 
-  // list creation and item addition moved to dedicated list pages
+  const sectionStyle: React.CSSProperties = {
+    padding: "48px 0",
+    borderTop: "1px solid var(--ink)",
+  };
+
+  function personRow(person: UserSummary, action: React.ReactNode) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "10px 0",
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              overflow: "hidden",
+              background: "var(--bg-strong)",
+              flexShrink: 0,
+            }}
+          >
+            {person.avatar_url ? (
+              <img
+                src={person.avatar_url}
+                alt={getUserLabel(person)}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <div
+                className="eyebrow"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {getUserInitial(person)}
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              {getUserLabel(person)}
+            </div>
+            <div className="eyebrow">{person.spotify_id}</div>
+          </div>
+        </div>
+        {action}
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen text-[color:var(--foreground)]">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-12">
-        <header className="flex flex-col gap-6 border-b border-[color:var(--border)] pb-6">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-none bg-[color:var(--accent)] text-lg font-bold text-[#0a140c]">
-                J
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">
-                  Jukebox
-                </p>
-                <p className="font-mono text-xl font-semibold tracking-tight">
-                  Your profile
-                </p>
-              </div>
-            </div>
-            <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
-              <Link
-                href="/"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Home
-              </Link>
-              <Link
-                href="/search"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Search
-              </Link>
-              <span className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)]">
-                Profile
-              </span>
-            </nav>
-            <Link
-              href="/search"
-              className="inline-flex items-center justify-center rounded-none border border-[color:var(--border)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)]"
-            >
-              Back to search
-            </Link>
-          </div>
-          <p className="text-[var(--muted)]">
-            Track your reviews and personal ratings.
-          </p>
-        </header>
-
+    <Shell
+      user={user}
+      reviewCount={user ? reviews.length : undefined}
+      followerCount={user ? followers.length : undefined}
+      onLogout={handleLogout}
+    >
+      <main style={{ maxWidth: 1320, margin: "0 auto", padding: "0 40px" }}>
         {!authChecked && (
-          <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--muted)]">
-            Checking session...
+          <div className="eyebrow" style={{ padding: "48px 0" }}>
+            Checking session…
           </div>
         )}
 
         {authChecked && !user && (
-          <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--foreground)]">
-            <p>You need to sign in to view your profile.</p>
-            <a
-              className="mt-4 inline-flex items-center justify-center rounded-none bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
-              href={`${apiUrl}/auth/spotify`}
+          <section style={{ padding: "72px 0" }}>
+            <h1
+              className="display"
+              style={{ fontSize: "clamp(48px, 6vw, 88px)", margin: 0 }}
             >
-              Continue with Spotify
-            </a>
-          </div>
-        )}
-
-        {user && (
-          <section className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--border)] pb-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Signed in as
-                </p>
-                <p className="text-lg font-semibold text-[var(--foreground)]">
-                  {user.display_name || user.spotify_id}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-6 text-sm text-[var(--muted)]">
-                <span>{reviews.length} reviews</span>
-                <span>
-                  {averageRating ? `Average ${averageRating}` : "No ratings"}
-                </span>
-              </div>
+              Sign in to <em>keep score.</em>
+            </h1>
+            <p className="pull" style={{ fontSize: 22, marginTop: 20, maxWidth: 480 }}>
+              Your reviews, ranked lists, and listening year live here.
+            </p>
+            <div style={{ marginTop: 28 }}>
+              <a className="btn primary" href={`${apiUrl}/auth/spotify`}>
+                Continue with Spotify
+              </a>
             </div>
-            {pinnedReview ? (
-              <div className="mt-4 border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4">
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                  Pinned review
-                </p>
-                <div className="mt-3 flex items-start gap-4">
-                  <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                    {albumMap[pinnedReview.spotify_album_id]?.image ? (
-                      <img
-                        src={albumMap[pinnedReview.spotify_album_id].image ?? undefined}
-                        alt={`${albumMap[pinnedReview.spotify_album_id].name} cover`}
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                        No art
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <Link
-                      href={`/albums/${pinnedReview.spotify_album_id}`}
-                      className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--accent)]"
-                    >
-                      {albumMap[pinnedReview.spotify_album_id]?.name || "Album"}
-                    </Link>
-                    <p className="text-xs text-[var(--muted)]">
-                      {albumMap[pinnedReview.spotify_album_id]?.artists?.join(", ") ||
-                        pinnedReview.spotify_album_id}
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">
-                      Rating {pinnedReview.rating}/10
-                    </p>
-                    {pinnedReview.body && (
-                      <p className="text-xs text-[var(--muted)]">
-                        {pinnedReview.body}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4 text-xs text-[var(--muted)]">
-                Pin a review to feature it here.
-              </div>
-            )}
           </section>
         )}
 
         {user && (
-          <section className="space-y-6 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Profile
-              </h2>
-              <button
-                type="button"
-                className="rounded-none border border-[color:var(--border)] px-3 py-2 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                onClick={() => handleEditToggle(!editingProfile)}
-              >
-                {editingProfile ? "Cancel" : "Edit profile"}
-              </button>
-            </div>
-
-            {profileLoading && (
-              <div className="border border-[color:var(--border)] p-4 text-sm text-[var(--muted)]">
-                Loading profile...
-              </div>
-            )}
-
-            {!profileLoading && !editingProfile && (
-              <div className="space-y-6">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="relative h-28 w-28 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                      {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt="Profile avatar"
-                          className="h-full w-full object-cover"
-                        />
+          <>
+            {/* ══ HEAD ══ */}
+            <section
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.1fr 1fr",
+                gap: 48,
+                padding: "48px 0 32px",
+                alignItems: "end",
+              }}
+            >
+              <div>
+                <div
+                  className="eyebrow"
+                  style={{
+                    marginBottom: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  {avatarUrl && (
+                    <span
+                      style={{
+                        width: 28,
+                        height: 28,
+                        overflow: "hidden",
+                        display: "inline-block",
+                      }}
+                    >
+                      <img
+                        src={avatarUrl}
+                        alt="Profile avatar"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    </span>
+                  )}
+                  <span>@{user.spotify_id}</span>
+                </div>
+                <h1
+                  className="display"
+                  style={{
+                    fontSize: "clamp(72px, 9vw, 128px)",
+                    lineHeight: 0.9,
+                    letterSpacing: "-0.025em",
+                    margin: 0,
+                  }}
+                >
+                  {profileDisplayName.split(" ").map((word, i, arr) => (
+                    <span key={i}>
+                      {i === arr.length - 1 && arr.length > 1 ? (
+                        <em>{word}.</em>
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center text-lg font-semibold text-[var(--muted-strong)]">
-                          {avatarInitial}
-                        </div>
+                        <>
+                          {word}
+                          {i < arr.length - 1 ? <br /> : null}
+                        </>
                       )}
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Display name
-                      </p>
-                      <p className="text-lg font-semibold text-[var(--foreground)]">
-                        {profileDisplayName}
-                      </p>
-                      <p className="text-xs text-[var(--muted)]">
-                        {user.spotify_id}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    {profileFavorites.length} favorite
-                    {profileFavorites.length === 1 ? "" : "s"}
-                  </div>
-                </div>
-
-                <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4 text-sm text-[var(--foreground)]">
-                  {profileBio
-                    ? profileBio
-                    : "Add a bio to share your listening style."}
-                </div>
-
-                <div className="grid gap-6 lg:grid-cols-3">
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                      Favorite genres
-                    </p>
-                    {profileGenres.length === 0 ? (
-                      <p className="text-sm text-[var(--muted)]">
-                        No favorite genres yet.
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                        {profileGenres.map((genre) => (
-                          <span
-                            key={genre}
-                            className="border border-[color:var(--border)] px-2 py-1"
-                          >
-                            {genre}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                      Favorite artists
-                    </p>
-                    {profileFavoriteArtists.length === 0 ? (
-                      <p className="text-sm text-[var(--muted)]">
-                        Pick your favorite artists to show them here.
-                      </p>
-                    ) : (
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {profileFavoriteArtists.map((artistId) => {
-                          const artist = artistMap[artistId];
-                          return (
-                            <div
-                              key={artistId}
-                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
-                            >
-                              <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                                {artist?.image ? (
-                                  <img
-                                    src={artist.image}
-                                    alt={`${artist.name} portrait`}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                    No art
-                                  </div>
-                                )}
-                              </div>
-                              <div className="mt-3">
-                                <p className="text-sm font-semibold text-[var(--foreground)]">
-                                  {artist?.name || "Artist"}
-                                </p>
-                              {artist?.genres?.length ? (
-                                <p className="text-xs text-[var(--muted)]">
-                                  {artist.genres.slice(0, 2).join(", ")}
-                                </p>
-                              ) : (
-                                <p className="text-xs text-[var(--muted)]">
-                                  No genres listed
-                                </p>
-                              )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                      Top albums
-                    </p>
-                    {profileFavorites.length === 0 ? (
-                      <p className="text-sm text-[var(--muted)]">
-                        Pick your top 3 albums to show them here.
-                      </p>
-                    ) : (
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {profileFavorites.map((albumId, index) => {
-                          const album = albumMap[albumId];
-                          return (
-                            <div
-                              key={albumId}
-                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
-                            >
-                              <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                                {album?.image ? (
-                                  <img
-                                    src={album.image}
-                                    alt={`${album.name} cover`}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                    No art
-                                  </div>
-                                )}
-                              </div>
-                              <div className="mt-3">
-                                <p className="text-sm font-semibold text-[var(--foreground)]">
-                                  {album?.name || "Album"}
-                                </p>
-                              <p className="min-h-[2rem] text-xs text-[var(--muted)]">
-                                {album?.artists?.join(", ") || albumId}
-                              </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                    </span>
+                  ))}
+                </h1>
+                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => handleEditToggle(!editingProfile)}
+                  >
+                    {editingProfile ? "Cancel editing" : "Edit profile"}
+                  </button>
+                  <Link href="/search" className="btn">
+                    Log a listen
+                  </Link>
                 </div>
               </div>
-            )}
+              <div>
+                <p className="pull" style={{ fontSize: 22, maxWidth: 440 }}>
+                  {profileBio || "Add a bio to share your listening style."}
+                </p>
+                <div
+                  className="eyebrow"
+                  style={{
+                    display: "flex",
+                    gap: 24,
+                    marginTop: 20,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span>
+                    <b style={{ color: "var(--ink)", fontWeight: 500 }}>
+                      {totalThisYear}
+                    </b>{" "}
+                    this yr
+                  </span>
+                  <span>
+                    <b style={{ color: "var(--ink)", fontWeight: 500 }}>
+                      {highRatedCount}
+                    </b>{" "}
+                    five-stars
+                  </span>
+                  <span>
+                    <b style={{ color: "var(--ink)", fontWeight: 500 }}>
+                      {averageRating ?? "—"}
+                    </b>{" "}
+                    avg
+                  </span>
+                  <span>
+                    <b style={{ color: "var(--ink)", fontWeight: 500 }}>
+                      {lists.length}
+                    </b>{" "}
+                    lists
+                  </span>
+                </div>
+              </div>
+            </section>
 
-            {!profileLoading && editingProfile && (
-              <form onSubmit={handleProfileSave} className="space-y-6">
-                <div className="flex flex-col gap-6 lg:flex-row">
-                  <div className="w-full max-w-xs space-y-4">
-                    <div className="flex items-center gap-4">
-                      <div className="relative h-28 w-28 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                        {avatarUrl ? (
-                          <img
-                            src={avatarUrl}
-                            alt="Profile avatar"
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-lg font-semibold text-[var(--muted-strong)]">
-                            {avatarInitial}
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+            {/* ══ EDITOR (progressive disclosure) ══ */}
+            {editingProfile && !profileLoading && (
+              <section style={sectionStyle}>
+                <SectionHead
+                  title="Edit profile"
+                  emph="profile"
+                  count="Changes save to your public page"
+                />
+                <form onSubmit={handleProfileSave} style={{ display: "grid", gap: 28 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "280px 1fr",
+                      gap: 40,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: 16 }}>
+                      <div>
+                        <div className="eyebrow" style={{ marginBottom: 8 }}>
                           Profile photo
-                        </p>
+                        </div>
+                        <div
+                          style={{
+                            width: 120,
+                            height: 120,
+                            overflow: "hidden",
+                            background: "var(--bg-strong)",
+                            marginBottom: 10,
+                          }}
+                        >
+                          {avatarUrl ? (
+                            <img
+                              src={avatarUrl}
+                              alt="Profile avatar"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            <div
+                              className="display"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 44,
+                                fontStyle: "italic",
+                                color: "var(--muted)",
+                              }}
+                            >
+                              {avatarInitial}
+                            </div>
+                          )}
+                        </div>
                         <input
                           type="file"
                           accept="image/*"
-                          className="text-xs text-[var(--muted)]"
                           onChange={handleAvatarUpload}
                           disabled={avatarUploading}
+                          style={{ fontSize: 12 }}
                         />
                         {avatarUploading && (
-                          <p className="text-xs text-[var(--muted-strong)]">
-                            Uploading...
-                          </p>
+                          <div className="eyebrow" style={{ marginTop: 6 }}>
+                            Uploading…
+                          </div>
                         )}
+                      </div>
+                      <div>
+                        <div className="eyebrow" style={{ marginBottom: 8 }}>
+                          Display name
+                        </div>
+                        <input
+                          className="input"
+                          value={displayName}
+                          onChange={(event) => setDisplayName(event.target.value)}
+                          placeholder="Your display name"
+                        />
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Display name
-                      </label>
-                      <input
-                        className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                        value={displayName}
-                        onChange={(event) => setDisplayName(event.target.value)}
-                        placeholder="Your display name"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Bio
-                      </label>
-                      <textarea
-                        className="min-h-[120px] w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                        placeholder="Tell people about your taste."
-                        value={bio}
-                        onChange={(event) => setBio(event.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Favorite genres
-                      </label>
-                      <input
-                        className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                        placeholder="R&B, Soul, Jazz"
-                        value={genresInput}
-                        onChange={(event) => setGenresInput(event.target.value)}
-                      />
-                      {parsedGenres.length > 0 && (
-                        <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                          {parsedGenres.slice(0, 10).map((genre) => (
-                            <span
-                              key={genre}
-                              className="border border-[color:var(--border)] px-2 py-1"
-                            >
-                              {genre}
-                            </span>
-                          ))}
+                    <div style={{ display: "grid", gap: 20 }}>
+                      <div>
+                        <div className="eyebrow" style={{ marginBottom: 8 }}>
+                          Bio
                         </div>
-                      )}
-                    </div>
+                        <textarea
+                          className="input"
+                          style={{ minHeight: 110 }}
+                          placeholder="Tell people about your taste."
+                          value={bio}
+                          onChange={(event) => setBio(event.target.value)}
+                        />
+                      </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Favorite artists
-                      </label>
-                      <input
-                        className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                        placeholder="Search for favorite artists"
-                        value={favoriteArtistQuery}
-                        onChange={(event) =>
-                          setFavoriteArtistQuery(event.target.value)
-                        }
-                      />
-                      {favoriteArtistSearching && (
-                        <p className="text-xs text-[var(--muted)]">
-                          Searching...
-                        </p>
-                      )}
-                      {favoriteArtistSuggestions.length > 0 &&
-                        favoriteArtistQuery.trim().length > 1 && (
-                          <div className="border border-[color:var(--border)] bg-[color:var(--surface)]">
-                            {favoriteArtistSuggestions.map((artist) => (
-                              <button
-                                key={artist.id}
-                                type="button"
-                                className="flex w-full items-center gap-3 border-b border-[color:var(--border)] px-4 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[color:var(--surface-strong)]"
-                                onClick={() => handleFavoriteArtistAdd(artist)}
+                      <div>
+                        <div className="eyebrow" style={{ marginBottom: 8 }}>
+                          Favorite genres (comma-separated, up to 10)
+                        </div>
+                        <input
+                          className="input"
+                          placeholder="R&B, Soul, Jazz"
+                          value={genresInput}
+                          onChange={(event) => setGenresInput(event.target.value)}
+                        />
+                        {parsedGenres.length > 0 && (
+                          <div
+                            className="eyebrow"
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                              marginTop: 8,
+                            }}
+                          >
+                            {parsedGenres.slice(0, 10).map((genre) => (
+                              <span
+                                key={genre}
+                                style={{
+                                  border: "1px solid var(--line-strong)",
+                                  padding: "4px 8px",
+                                }}
                               >
-                                <div className="aspect-square w-10 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                                  {artist.image ? (
-                                    <img
-                                      src={artist.image}
-                                      alt={`${artist.name} portrait`}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : null}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-semibold">
-                                    {artist.name}
-                                  </p>
-                                  <p className="text-xs text-[var(--muted)]">
-                                    {artist.genres.slice(0, 2).join(", ") ||
-                                      "Artist"}
-                                  </p>
-                                </div>
-                              </button>
+                                {genre}
+                              </span>
                             ))}
                           </div>
                         )}
-                      {favoriteArtistError && (
-                        <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                          {favoriteArtistError}
-                        </div>
-                      )}
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {favoriteArtistIds.length === 0 && (
-                          <p className="text-xs text-[var(--muted)]">
-                            Pick up to five artists.
-                          </p>
-                        )}
-                        {favoriteArtistIds.map((artistId, index) => {
-                          const artist = artistMap[artistId];
-                          return (
-                            <div
-                              key={artistId}
-                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
-                            >
-                              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                <span>#{index + 1}</span>
-                                <button
-                                  type="button"
-                                  className="text-[var(--muted)] hover:text-[var(--foreground)]"
-                                  onClick={() =>
-                                    handleFavoriteArtistRemove(artistId)
-                                  }
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                              <div className="mt-3 space-y-3">
-                                <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                                  {artist?.image ? (
-                                    <img
-                                      src={artist.image}
-                                      alt={`${artist?.name || "Artist"} portrait`}
-                                      className="absolute inset-0 h-full w-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                      No art
-                                    </div>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                                    {artist?.name || "Artist"}
-                                  </p>
-                                  <p className="text-xs text-[var(--muted)]">
-                                    {artist?.genres?.slice(0, 2).join(", ") ||
-                                      "No genres listed"}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                        Top 3 albums
-                      </label>
-                      <input
-                        className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                        placeholder="Search for favorite albums"
-                        value={favoriteQuery}
-                        onChange={(event) => setFavoriteQuery(event.target.value)}
-                      />
-                      {favoriteSearching && (
-                        <p className="text-xs text-[var(--muted)]">
-                          Searching...
-                        </p>
-                      )}
-                      {favoriteSuggestions.length > 0 && favoriteQuery.trim().length > 1 && (
-                        <div className="border border-[color:var(--border)] bg-[color:var(--surface)]">
-                          {favoriteSuggestions.map((album) => (
-                            <button
-                              key={album.id}
-                              type="button"
-                              className="flex w-full items-center gap-3 border-b border-[color:var(--border)] px-4 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[color:var(--surface-strong)]"
-                              onClick={() => handleFavoriteAdd(album)}
+                      <div>
+                        <div className="eyebrow" style={{ marginBottom: 8 }}>
+                          Favorite artists (up to 5)
+                        </div>
+                        <input
+                          className="input"
+                          placeholder="Search for favorite artists"
+                          value={favoriteArtistQuery}
+                          onChange={(event) =>
+                            setFavoriteArtistQuery(event.target.value)
+                          }
+                        />
+                        {favoriteArtistSearching && (
+                          <div className="eyebrow" style={{ marginTop: 6 }}>
+                            Searching…
+                          </div>
+                        )}
+                        {favoriteArtistSuggestions.length > 0 &&
+                          favoriteArtistQuery.trim().length > 1 && (
+                            <div
+                              style={{
+                                border: "1px solid var(--line-strong)",
+                                borderBottom: 0,
+                                marginTop: 8,
+                              }}
                             >
-                              <div className="aspect-square w-10 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                                {album.image ? (
-                                  <img
-                                    src={album.image}
-                                    alt={`${album.name} cover`}
-                                    className="h-full w-full object-cover"
+                              {favoriteArtistSuggestions.map((artist) => (
+                                <button
+                                  key={artist.id}
+                                  type="button"
+                                  onClick={() => handleFavoriteArtistAdd(artist)}
+                                  style={{
+                                    display: "flex",
+                                    width: "100%",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    padding: "8px 12px",
+                                    borderBottom: "1px solid var(--line-strong)",
+                                    background: "var(--paper)",
+                                    textAlign: "left",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: 36,
+                                      height: 36,
+                                      overflow: "hidden",
+                                      background: "var(--bg-strong)",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {artist.image ? (
+                                      <img
+                                        src={artist.image}
+                                        alt={`${artist.name} portrait`}
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "cover",
+                                        }}
+                                      />
+                                    ) : null}
+                                  </span>
+                                  <span>
+                                    <span
+                                      style={{
+                                        display: "block",
+                                        fontSize: 13,
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      {artist.name}
+                                    </span>
+                                    <span className="eyebrow">
+                                      {artist.genres.slice(0, 2).join(", ") ||
+                                        "Artist"}
+                                    </span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        {favoriteArtistError && (
+                          <div className="note" style={{ marginTop: 8 }}>
+                            {favoriteArtistError}
+                          </div>
+                        )}
+                        {favoriteArtistIds.length > 0 && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(5, 1fr)",
+                              gap: 12,
+                              marginTop: 12,
+                            }}
+                          >
+                            {favoriteArtistIds.map((artistId) => {
+                              const artist = artistMap[artistId];
+                              return (
+                                <div key={artistId}>
+                                  <AlbumCover
+                                    src={artist?.image}
+                                    alt={artist?.name || "Artist"}
                                   />
-                                ) : null}
-                              </div>
-                              <div>
-                                <p className="text-sm font-semibold">
-                                  {album.name}
-                                </p>
-                                <p className="text-xs text-[var(--muted)]">
-                                  {album.artists.join(", ")}
-                                </p>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {favoriteError && (
-                        <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                          {favoriteError}
-                        </div>
-                      )}
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {favoriteAlbumIds.length === 0 && (
-                          <p className="text-xs text-[var(--muted)]">
-                            Pick up to three albums.
-                          </p>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "baseline",
+                                      marginTop: 6,
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 12, fontWeight: 500 }}>
+                                      {artist?.name || "Artist"}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="eyebrow"
+                                      onClick={() =>
+                                        handleFavoriteArtistRemove(artistId)
+                                      }
+                                      style={{
+                                        cursor: "pointer",
+                                        borderBottom: "1px solid var(--ink)",
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
-                        {favoriteAlbumIds.map((albumId, index) => {
-                          const album = albumMap[albumId];
-                          return (
+                      </div>
+
+                      <div>
+                        <div className="eyebrow" style={{ marginBottom: 8 }}>
+                          Top albums (up to 3)
+                        </div>
+                        <input
+                          className="input"
+                          placeholder="Search for favorite albums"
+                          value={favoriteQuery}
+                          onChange={(event) => setFavoriteQuery(event.target.value)}
+                        />
+                        {favoriteSearching && (
+                          <div className="eyebrow" style={{ marginTop: 6 }}>
+                            Searching…
+                          </div>
+                        )}
+                        {favoriteSuggestions.length > 0 &&
+                          favoriteQuery.trim().length > 1 && (
                             <div
-                              key={albumId}
-                              className="flex h-full flex-col border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3"
+                              style={{
+                                border: "1px solid var(--line-strong)",
+                                borderBottom: 0,
+                                marginTop: 8,
+                              }}
                             >
-                              <div className="flex items-center justify-end text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
+                              {favoriteSuggestions.map((album) => (
                                 <button
+                                  key={album.id}
                                   type="button"
-                                  className="text-[var(--muted)] hover:text-[var(--foreground)]"
-                                  onClick={() => handleFavoriteRemove(albumId)}
+                                  onClick={() => handleFavoriteAdd(album)}
+                                  style={{
+                                    display: "flex",
+                                    width: "100%",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    padding: "8px 12px",
+                                    borderBottom: "1px solid var(--line-strong)",
+                                    background: "var(--paper)",
+                                    textAlign: "left",
+                                    cursor: "pointer",
+                                  }}
                                 >
-                                  Remove
+                                  <span
+                                    style={{
+                                      width: 36,
+                                      height: 36,
+                                      overflow: "hidden",
+                                      background: "var(--bg-strong)",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {album.image ? (
+                                      <img
+                                        src={album.image}
+                                        alt={`${album.name} cover`}
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "cover",
+                                        }}
+                                      />
+                                    ) : null}
+                                  </span>
+                                  <span>
+                                    <span
+                                      style={{
+                                        display: "block",
+                                        fontSize: 13,
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      {album.name}
+                                    </span>
+                                    <span className="eyebrow">
+                                      {album.artists.join(", ")}
+                                    </span>
+                                  </span>
                                 </button>
-                              </div>
-                              <div className="mt-3">
-                                <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                                  {album?.image ? (
-                                    <img
-                                      src={album.image}
-                                      alt={`${album.name} cover`}
-                                      className="absolute inset-0 h-full w-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                      No art
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="mt-3">
-                                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                                    {album?.name || "Album"}
-                                  </p>
-                                  <p className="min-h-[2rem] text-xs text-[var(--muted)]">
-                                    {album?.artists?.join(", ") || albumId}
-                                  </p>
-                                </div>
-                              </div>
+                              ))}
                             </div>
-                          );
-                        })}
+                          )}
+                        {favoriteError && (
+                          <div className="note" style={{ marginTop: 8 }}>
+                            {favoriteError}
+                          </div>
+                        )}
+                        {favoriteAlbumIds.length > 0 && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(3, 1fr)",
+                              gap: 12,
+                              marginTop: 12,
+                            }}
+                          >
+                            {favoriteAlbumIds.map((albumId) => {
+                              const album = albumMap[albumId];
+                              return (
+                                <div key={albumId}>
+                                  <AlbumCover
+                                    src={album?.image}
+                                    alt={album?.name || "Album"}
+                                  />
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "baseline",
+                                      marginTop: 6,
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 12, fontWeight: 500 }}>
+                                      {album?.name || "Album"}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="eyebrow"
+                                      onClick={() => handleFavoriteRemove(albumId)}
+                                      style={{
+                                        cursor: "pointer",
+                                        borderBottom: "1px solid var(--ink)",
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {profileError && (
-                  <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
-                    {profileError}
+                  {profileError && <div className="note">{profileError}</div>}
+
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button type="submit" className="btn primary" disabled={profileSaving}>
+                      {profileSaving ? "Saving…" : "Save profile"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => handleEditToggle(false)}
+                      disabled={profileSaving}
+                    >
+                      Cancel
+                    </button>
                   </div>
-                )}
-
-                <button
-                  type="submit"
-                  className="rounded-none bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-                  disabled={profileSaving}
-                >
-                  {profileSaving ? "Saving..." : "Save profile"}
-                </button>
-              </form>
-            )}
-          </section>
-        )}
-
-        {user && (
-          <section className="space-y-4 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-            <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Recent activity
-              </h2>
-              <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Latest first
-              </span>
-            </div>
-
-            {recentActivity.length === 0 && (
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5 text-sm text-[var(--muted)]">
-                No activity yet. Start reviewing albums or making lists.
-              </div>
+                </form>
+              </section>
             )}
 
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
+            {/* ══ STATS BAR ══ */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                borderTop: "1px solid var(--ink)",
+                borderBottom: "1px solid var(--ink)",
+              }}
+            >
+              {[
+                { n: reviews.length.toLocaleString(), l: "Reviews" },
+                { n: followers.length.toLocaleString(), l: "Followers" },
+                { n: following.length.toLocaleString(), l: "Following" },
+              ].map((stat, i) => (
                 <div
-                  key={activity.id}
-                  className="flex flex-wrap items-center justify-between gap-3 border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3"
+                  key={stat.l}
+                  style={{
+                    padding: "18px 20px",
+                    borderRight: i < 2 ? "1px solid var(--line)" : undefined,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                      <span>
-                        {activity.type === "review"
-                          ? "Reviewed"
-                          : "Created list"}
-                      </span>
-                      {activity.type === "review" && (
-                        <span className="text-[var(--accent-strong)]">
-                          {activity.rating}/10
-                        </span>
-                      )}
-                    </div>
-                    {activity.href ? (
-                      <Link
-                        href={activity.href}
-                        className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--accent)]"
-                      >
-                        {activity.title}
-                      </Link>
-                    ) : (
-                      <p className="text-sm font-semibold text-[var(--foreground)]">
-                        {activity.title}
-                      </p>
-                    )}
-                    <p className="text-xs text-[var(--muted)]">
-                      {activity.subtitle}
-                    </p>
+                  <div className="display" style={{ fontSize: 44, margin: 0 }}>
+                    {stat.n}
                   </div>
-                  <div className="text-xs text-[var(--muted)]">
-                    {formatDate(activity.created_at)}
-                  </div>
+                  <div className="eyebrow">{stat.l}</div>
                 </div>
               ))}
             </div>
-          </section>
-        )}
 
-        {user && (
-          <section className="space-y-6 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Community
-              </h2>
-              <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                {followers.length} followers · {following.length} following
-              </span>
-            </div>
-
-            {followActionError && (
-              <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
-                {followActionError}
+            {/* ══ TOP 4 ══ */}
+            <section style={{ padding: "48px 0" }}>
+              <SectionHead
+                title="Top four"
+                emph="Top"
+                count="The records that define you"
+                moreHref={undefined}
+              />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 20,
+                }}
+              >
+                {profileFavorites.map((albumId, i) => {
+                  const album = albumMap[albumId];
+                  return (
+                    <Link key={albumId} href={`/albums/${albumId}`}>
+                      <AlbumCover src={album?.image} alt={album?.name || "Album"}>
+                        <div
+                          className="display"
+                          style={{
+                            position: "absolute",
+                            top: 10,
+                            left: 10,
+                            fontStyle: "italic",
+                            fontSize: 48,
+                            lineHeight: 1,
+                            color: "var(--paper)",
+                            textShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                            zIndex: 2,
+                          }}
+                        >
+                          {String(i + 1).padStart(2, "0")}
+                        </div>
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            background:
+                              "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.3) 100%)",
+                            pointerEvents: "none",
+                          }}
+                        />
+                      </AlbumCover>
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                          {album?.name || "Album"}
+                        </div>
+                        <div className="eyebrow" style={{ marginTop: 2 }}>
+                          {album?.artists?.join(", ") || albumId}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+                {Array.from({
+                  length: Math.max(0, 4 - profileFavorites.length),
+                }).map((_, i) => (
+                  <button
+                    key={`empty-${i}`}
+                    type="button"
+                    onClick={() => handleEditToggle(true)}
+                    style={{
+                      aspectRatio: "1/1",
+                      border: "1px dashed var(--line-strong)",
+                      background: "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    className="eyebrow"
+                  >
+                    + Add a record
+                  </button>
+                ))}
               </div>
+            </section>
+
+            {/* ══ FAVORITE ARTISTS ══ */}
+            {profileFavoriteArtists.length > 0 && (
+              <section style={sectionStyle}>
+                <SectionHead
+                  title="On rotation"
+                  emph="rotation"
+                  count={`${profileFavoriteArtists.length} favorite artist${
+                    profileFavoriteArtists.length === 1 ? "" : "s"
+                  }`}
+                />
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, 1fr)",
+                    gap: 16,
+                  }}
+                >
+                  {profileFavoriteArtists.map((artistId) => {
+                    const artist = artistMap[artistId];
+                    return (
+                      <div key={artistId}>
+                        <AlbumCover
+                          src={artist?.image}
+                          alt={artist?.name || "Artist"}
+                        />
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>
+                            {artist?.name || "Artist"}
+                          </div>
+                          <div className="eyebrow" style={{ marginTop: 2 }}>
+                            {artist?.genres?.slice(0, 2).join(", ") || "Artist"}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-              <div className="space-y-3">
-                <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                  Find people
-                </label>
-                <input
-                  className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                  placeholder="Search by name or Spotify ID"
-                  value={followSearch}
-                  onChange={(event) => setFollowSearch(event.target.value)}
-                />
-                {followSearching && (
-                  <p className="text-xs text-[var(--muted)]">Searching...</p>
-                )}
-                {followError && (
-                  <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                    {followError}
-                  </div>
-                )}
-                {!followSearching &&
-                  followSearch.trim().length > 1 &&
-                  followResults.length === 0 &&
-                  !followError && (
-                    <p className="text-xs text-[var(--muted)]">
-                      No users found yet.
-                    </p>
-                  )}
-                {followResults.length > 0 && (
-                  <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                    {followResults.map((person) => {
-                      const isFollowing = followingIds.includes(person.id);
-                      return (
-                        <div
-                          key={person.id}
-                          className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] px-4 py-3 last:border-b-0"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                              {person.avatar_url ? (
-                                <img
-                                  src={person.avatar_url}
-                                  alt={getUserLabel(person)}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-[var(--muted-strong)]">
-                                  {getUserInitial(person)}
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">
-                                {getUserLabel(person)}
-                              </p>
-                              <p className="text-xs text-[var(--muted)]">
-                                {person.spotify_id}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="border border-[color:var(--border)] px-3 py-1 text-xs uppercase tracking-[0.2em] text-[var(--foreground)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-                            onClick={() =>
-                              isFollowing
-                                ? handleUnfollowUser(person.id)
-                                : handleFollowUser(person.id)
-                            }
-                            disabled={followUpdatingId === person.id}
-                          >
-                            {followUpdatingId === person.id
-                              ? "Saving..."
-                              : isFollowing
-                              ? "Unfollow"
-                              : "Follow"}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Following
-                  </p>
-                  {followingLoading && (
-                    <p className="text-xs text-[var(--muted)]">
-                      Loading following...
-                    </p>
-                  )}
-                  {!followingLoading && following.length === 0 && (
-                    <p className="text-xs text-[var(--muted)]">
-                      You are not following anyone yet.
-                    </p>
-                  )}
-                  <div className="space-y-2">
-                    {following.map((person) => (
+            {/* ══ YEAR IN LISTENING ══ */}
+            <section style={sectionStyle}>
+              <SectionHead
+                title="Year in listening"
+                emph="listening"
+                count={`${new Date().getFullYear()} · ${totalThisYear} logs to date`}
+              />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 240px",
+                  gap: 40,
+                  alignItems: "start",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(53, 1fr)",
+                      gap: 3,
+                      gridAutoFlow: "column",
+                      gridTemplateRows: "repeat(7, 1fr)",
+                    }}
+                  >
+                    {yearCells.map((cell, i) => (
                       <div
-                        key={`following-${person.id}`}
-                        className="flex items-center justify-between gap-3 border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                            {person.avatar_url ? (
-                              <img
-                                src={person.avatar_url}
-                                alt={getUserLabel(person)}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-[var(--muted-strong)]">
-                                {getUserInitial(person)}
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-[var(--foreground)]">
-                              {getUserLabel(person)}
-                            </p>
-                            <p className="text-xs text-[var(--muted)]">
-                              {person.spotify_id}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="border border-[color:var(--border)] px-3 py-1 text-xs uppercase tracking-[0.2em] text-[var(--foreground)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-                          onClick={() => handleUnfollowUser(person.id)}
-                          disabled={followUpdatingId === person.id}
-                        >
-                          {followUpdatingId === person.id
-                            ? "Saving..."
-                            : "Unfollow"}
-                        </button>
-                      </div>
+                        key={i}
+                        style={{
+                          aspectRatio: "1/1",
+                          background: yearShades[cell.level],
+                        }}
+                        title={`${cell.date.toDateString()} — ${
+                          cell.level > 0 ? "logged" : "no activity"
+                        }`}
+                      />
                     ))}
                   </div>
+                  <div
+                    className="eyebrow"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginTop: 10,
+                    }}
+                  >
+                    {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map(
+                      (month) => (
+                        <span key={month}>{month}</span>
+                      )
+                    )}
+                  </div>
+                  <div
+                    className="eyebrow"
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
+                      marginTop: 14,
+                    }}
+                  >
+                    <span>Less</span>
+                    {yearShades.map((shade, i) => (
+                      <span
+                        key={i}
+                        style={{ width: 14, height: 14, background: shade }}
+                      />
+                    ))}
+                    <span>More</span>
+                  </div>
                 </div>
+                <div>
+                  <h3
+                    className="display"
+                    style={{ fontSize: 28, lineHeight: 1.1, marginBottom: 14 }}
+                  >
+                    Favorite <em>genres</em>
+                  </h3>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {profileGenres.slice(0, 8).map((genre) => (
+                      <div
+                        key={genre}
+                        className="eyebrow"
+                        style={{
+                          paddingBottom: 6,
+                          borderBottom: "1px solid var(--line)",
+                        }}
+                      >
+                        {genre}
+                      </div>
+                    ))}
+                    {profileGenres.length === 0 && (
+                      <div className="pull" style={{ fontSize: 18, color: "var(--muted)" }}>
+                        Add favorite genres to see them here.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Followers
-                  </p>
-                  {followersLoading && (
-                    <p className="text-xs text-[var(--muted)]">
-                      Loading followers...
-                    </p>
-                  )}
-                  {!followersLoading && followers.length === 0 && (
-                    <p className="text-xs text-[var(--muted)]">
-                      No followers yet.
-                    </p>
-                  )}
-                  <div className="space-y-2">
-                    {followers.map((person) => {
-                      const isFollowing = followingIds.includes(person.id);
-                      return (
+            {/* ══ PINNED REVIEWS (columns) ══ */}
+            {pinnedColumns.length > 0 && (
+              <section style={sectionStyle}>
+                <SectionHead
+                  title="Pinned reviews"
+                  emph="reviews"
+                  count="Showcase — your picks"
+                />
+                {reviewActionError && (
+                  <div className="note" style={{ marginBottom: 20 }}>
+                    {reviewActionError}
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: `repeat(${Math.min(
+                      pinnedColumns.length,
+                      3
+                    )}, 1fr)`,
+                    gap: 32,
+                  }}
+                >
+                  {pinnedColumns.map((review) => {
+                    const album = albumMap[review.spotify_album_id];
+                    return (
+                      <article
+                        key={review.id}
+                        style={{
+                          borderTop: "1px solid var(--ink)",
+                          paddingTop: 20,
+                        }}
+                      >
+                        <Link href={`/albums/${review.spotify_album_id}`}>
+                          <AlbumCover
+                            src={album?.image}
+                            alt={album?.name || "Album"}
+                            ratio="4/3"
+                          />
+                        </Link>
                         <div
-                          key={`follower-${person.id}`}
-                          className="flex items-center justify-between gap-3 border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2"
+                          className="display"
+                          style={{ fontSize: 28, lineHeight: 1.1, marginTop: 16 }}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                              {person.avatar_url ? (
-                                <img
-                                  src={person.avatar_url}
-                                  alt={getUserLabel(person)}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-[var(--muted-strong)]">
-                                  {getUserInitial(person)}
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">
-                                {getUserLabel(person)}
-                              </p>
-                              <p className="text-xs text-[var(--muted)]">
-                                {person.spotify_id}
-                              </p>
-                            </div>
-                          </div>
+                          {album?.name || "Album"}
+                        </div>
+                        {review.body && (
+                          <p className="pull" style={{ fontSize: 18, marginTop: 10 }}>
+                            &ldquo;{review.body}&rdquo;
+                          </p>
+                        )}
+                        <div
+                          className="eyebrow"
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginTop: 14,
+                          }}
+                        >
+                          <span>{album?.artists?.join(", ") || ""}</span>
+                          <Stars value={rating10ToStars(review.rating)} />
+                        </div>
+                        <div
+                          className="eyebrow"
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginTop: 8,
+                          }}
+                        >
+                          <span>{review.is_pinned ? "Pinned" : "Top rated"}</span>
                           <button
                             type="button"
-                            className="border border-[color:var(--border)] px-3 py-1 text-xs uppercase tracking-[0.2em] text-[var(--foreground)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
                             onClick={() =>
-                              isFollowing
-                                ? handleUnfollowUser(person.id)
-                                : handleFollowUser(person.id)
+                              handleReviewPin(review.id, !review.is_pinned)
                             }
-                            disabled={followUpdatingId === person.id}
+                            disabled={reviewPinning === review.id}
+                            className="eyebrow"
+                            style={{
+                              cursor: "pointer",
+                              borderBottom: "1px solid var(--ink)",
+                              color: "var(--ink)",
+                            }}
                           >
-                            {followUpdatingId === person.id
-                              ? "Saving..."
-                              : isFollowing
-                              ? "Unfollow"
-                              : "Follow"}
+                            {reviewPinning === review.id
+                              ? "Saving…"
+                              : review.is_pinned
+                                ? "Unpin"
+                                : "Pin →"}
                           </button>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </article>
+                    );
+                  })}
                 </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {error && (
-          <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
-            {error}
-          </div>
-        )}
-
-        {user && (
-          <section className="space-y-4 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--border)] pb-4">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Lists
-              </h2>
-              <div className="flex items-center gap-3">
-                <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Curate your albums
-                </span>
-                <Link
-                  href="/lists/new"
-                  className="rounded-none border border-[color:var(--border)] px-3 py-2 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                >
-                  Create list
-                </Link>
-              </div>
-            </div>
-
-            {listsLoading && (
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
-                Loading lists...
-              </div>
+              </section>
             )}
 
-            {listsError && (
-              <div className="border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
-                {listsError}
-              </div>
-            )}
+            {/* ══ RECENT ENTRIES (review management) ══ */}
+            <section style={sectionStyle}>
+              <SectionHead
+                title="Recent entries"
+                emph="entries"
+                count={loading ? "Loading…" : `${reviews.length} total`}
+              />
 
-            {listActionError && (
-              <div className="border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
-                {listActionError}
-              </div>
-            )}
-
-            {!listsLoading && lists.length === 0 && (
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
-                No lists yet. Create one to start collecting albums.
-              </div>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {lists.map((list) => (
-                <div
-                  key={list.id}
-                  className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5 transition hover:border-[var(--accent)]"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <Link
-                        href={`/lists/${list.id}`}
-                        className="text-sm font-semibold text-[var(--foreground)] hover:text-[var(--accent)]"
-                      >
-                        {list.title}
-                      </Link>
-                      {list.description && (
-                        <p className="text-xs text-[var(--muted)]">
-                          {list.description}
-                        </p>
-                      )}
-                      {list.tags && list.tags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                          {list.tags.map((tag) => (
-                            <span
-                              key={`${list.id}-${tag}`}
-                              className="border border-[color:var(--border)] px-2 py-1"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[var(--muted)]">
-                        {list.items.length} album
-                        {list.items.length === 1 ? "" : "s"}
-                      </span>
-                      <span className="text-xs text-[var(--muted)]">
-                        {list.likes_count ?? 0} like
-                        {(list.likes_count ?? 0) === 1 ? "" : "s"}
-                      </span>
-                      <button
-                        type="button"
-                        className="border border-red-500/40 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-red-200 transition hover:border-red-500 disabled:cursor-not-allowed disabled:text-red-300/60"
-                        onClick={() => handleDeleteList(list.id)}
-                        disabled={listDeleting === list.id}
-                      >
-                        {listDeleting === list.id ? "Deleting..." : "Delete"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                    {list.is_ranked ? "Ranked list" : "Unranked list"}
-                  </div>
-
-                  <Link href={`/lists/${list.id}`} className="mt-4 block">
-                    <div className="grid grid-cols-4 gap-2">
-                      {list.items.length === 0 && (
-                        <p className="col-span-full text-xs text-[var(--muted)]">
-                          No albums yet.
-                        </p>
-                      )}
-                      {list.items.slice(0, 4).map((item) => {
-                        const album = albumMap[item.spotify_album_id];
-                        return (
-                          <div
-                            key={item.spotify_album_id}
-                            className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]"
-                          >
-                            {album?.image ? (
-                              <img
-                                src={album.image}
-                                alt={`${album.name} cover`}
-                                className="absolute inset-0 h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                                No art
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Link>
+              {error && (
+                <div className="note" style={{ marginBottom: 20 }}>
+                  {error}
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+              )}
 
-        {user && (
-          <section className="space-y-4 border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
-            <div className="flex items-center justify-between border-b border-[color:var(--border)] pb-4">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Reviews
-              </h2>
-              <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                Latest first
-              </span>
-            </div>
-
-            {loading && (
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
-                Loading reviews...
-              </div>
-            )}
-
-            {reviewActionError && (
-              <div className="border border-red-500/40 bg-red-500/10 p-4 text-xs text-red-200">
-                {reviewActionError}
-              </div>
-            )}
-
-            {!loading && reviews.length === 0 && (
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
-                No reviews yet. Head back to search and rate an album.
-              </div>
-            )}
-
-            <div className="space-y-4">
-              {recentReviews.map((review) => {
-                const album = albumMap[review.spotify_album_id];
-                return (
-                  <div
-                    key={review.id}
-                    className="flex flex-col gap-4 border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5 md:flex-row md:items-start"
+              {!loading && reviews.length === 0 && (
+                <p className="pull" style={{ fontSize: 20, color: "var(--muted)" }}>
+                  No reviews yet.{" "}
+                  <Link
+                    href="/search"
+                    style={{
+                      fontStyle: "italic",
+                      color: "var(--ink)",
+                      borderBottom: "1px solid var(--ink)",
+                    }}
                   >
-                    <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                      {album?.image ? (
-                        <img
-                          src={album.image}
-                          alt={`${album.name} cover`}
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      ) : null}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--foreground)]">
-                            {album?.name || "Album"}
-                          </p>
-                          <p className="text-xs text-[var(--muted)]">
-                            {album?.artists?.join(", ") || review.spotify_album_id}
-                          </p>
+                    Rate your first album →
+                  </Link>
+                </p>
+              )}
+
+              <div style={{ display: "grid", gap: 0 }}>
+                {recentReviews.map((review, i) => {
+                  const album = albumMap[review.spotify_album_id];
+                  const date = new Date(review.created_at);
+                  const isEditing = editingReviewId === review.id;
+                  return (
+                    <div
+                      key={review.id}
+                      style={{
+                        padding: "16px 0",
+                        borderTop:
+                          i === 0 ? "1px solid var(--ink)" : "1px solid var(--line)",
+                        borderBottom:
+                          i === recentReviews.length - 1
+                            ? "1px solid var(--ink)"
+                            : undefined,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "80px 64px 1fr auto auto",
+                          gap: 20,
+                          alignItems: "center",
+                        }}
+                      >
+                        <div className="eyebrow">
+                          <b
+                            className="display"
+                            style={{
+                              display: "block",
+                              fontStyle: "italic",
+                              fontSize: 22,
+                              color: "var(--ink)",
+                              textTransform: "none",
+                              letterSpacing: 0,
+                            }}
+                          >
+                            {date.getDate()}
+                          </b>
+                          {date.toLocaleDateString("en-US", { month: "short" })}
                         </div>
-                        <span className="text-xs text-[var(--muted)]">
-                          {formatDate(review.created_at)}
-                        </span>
+                        <div style={{ width: 64 }}>
+                          <Link href={`/albums/${review.spotify_album_id}`}>
+                            <AlbumCover
+                              src={album?.image}
+                              alt={album?.name || "Album"}
+                            />
+                          </Link>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 500 }}>
+                            <Link href={`/albums/${review.spotify_album_id}`}>
+                              {album?.name || "Album"}
+                            </Link>
+                            <span className="eyebrow" style={{ marginLeft: 8 }}>
+                              · {album?.artists?.join(", ") || review.spotify_album_id}
+                            </span>
+                          </div>
+                          {review.body && !isEditing && (
+                            <div className="pull" style={{ fontSize: 15, marginTop: 4 }}>
+                              &ldquo;
+                              {review.body.length > 120
+                                ? review.body.slice(0, 120) + "…"
+                                : review.body}
+                              &rdquo;
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <Stars value={rating10ToStars(review.rating)} />
+                        </div>
+                        <div
+                          className="eyebrow"
+                          style={{
+                            textAlign: "right",
+                            display: "flex",
+                            gap: 14,
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isEditing
+                                ? setEditingReviewId(null)
+                                : startEditReview(review)
+                            }
+                            className="eyebrow"
+                            style={{
+                              cursor: "pointer",
+                              borderBottom: "1px solid var(--ink)",
+                              color: "var(--ink)",
+                            }}
+                          >
+                            {isEditing ? "Close" : "Edit →"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReviewDelete(review.id)}
+                            disabled={reviewDeleting === review.id}
+                            className="eyebrow"
+                            style={{
+                              cursor: "pointer",
+                              color: "var(--accent)",
+                            }}
+                          >
+                            {reviewDeleting === review.id ? "Deleting…" : "Delete"}
+                          </button>
+                        </div>
                       </div>
-                      {editingReviewId === review.id ? (
-                        <div className="space-y-3">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <label className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                              Rating
-                            </label>
+
+                      {isEditing && (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            marginLeft: 100,
+                            display: "grid",
+                            gap: 12,
+                            maxWidth: 560,
+                          }}
+                        >
+                          <div
+                            style={{ display: "flex", alignItems: "center", gap: 12 }}
+                          >
+                            <span className="eyebrow">Rating</span>
                             <select
-                              className="rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                              className="input"
+                              style={{ width: 80 }}
                               value={editRatingValue}
                               onChange={(event) =>
                                 setEditRatingValue(event.target.value)
@@ -2243,26 +2271,29 @@ export default function ProfilePage() {
                                 </option>
                               ))}
                             </select>
+                            <span className="eyebrow">/ 10</span>
                           </div>
                           <textarea
-                            className="min-h-[100px] w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
+                            className="input"
+                            style={{ minHeight: 90 }}
                             value={editBodyValue}
-                            onChange={(event) =>
-                              setEditBodyValue(event.target.value)
-                            }
+                            onChange={(event) => setEditBodyValue(event.target.value)}
                           />
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted)]">
+                          {reviewActionError && (
+                            <div className="note">{reviewActionError}</div>
+                          )}
+                          <div style={{ display: "flex", gap: 10 }}>
                             <button
                               type="button"
-                              className="rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
+                              className="btn primary sm"
                               onClick={() => handleReviewUpdate(review.id)}
                               disabled={reviewSaving}
                             >
-                              {reviewSaving ? "Saving..." : "Save"}
+                              {reviewSaving ? "Saving…" : "Save"}
                             </button>
                             <button
                               type="button"
-                              className="border border-[color:var(--border)] px-3 py-2 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
+                              className="btn sm"
                               onClick={() => setEditingReviewId(null)}
                               disabled={reviewSaving}
                             >
@@ -2270,65 +2301,290 @@ export default function ProfilePage() {
                             </button>
                           </div>
                         </div>
-                      ) : (
-                        <>
-                          <div className="text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">
-                            Rating {review.rating}/10
-                          </div>
-                          {review.body && (
-                            <p className="text-sm text-[var(--foreground)]">
-                              {review.body}
-                            </p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-[0.3em] text-[var(--muted)]">
-                            <button
-                              type="button"
-                              className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)]"
-                              onClick={() => startEditReview(review)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-                              onClick={() =>
-                                handleReviewPin(review.id, !review.is_pinned)
-                              }
-                              disabled={reviewPinning === review.id}
-                            >
-                              {reviewPinning === review.id
-                                ? "Saving..."
-                                : review.is_pinned
-                                ? "Unpin"
-                                : "Pin"}
-                            </button>
-                            <button
-                              type="button"
-                              className="border border-red-500/40 px-3 py-2 text-red-200 transition hover:border-red-500"
-                              onClick={() => handleReviewDelete(review.id)}
-                              disabled={reviewDeleting === review.id}
-                            >
-                              {reviewDeleting === review.id
-                                ? "Deleting..."
-                                : "Delete"}
-                            </button>
-                          </div>
-                        </>
                       )}
-                      <Link
-                        href={`/albums/${review.spotify_album_id}`}
-                        className="text-xs text-[var(--accent-strong)] hover:text-[var(--accent)]"
-                      >
-                        View album
-                      </Link>
                     </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* ══ LISTS ══ */}
+            <section style={sectionStyle}>
+              <SectionHead
+                title="Your lists"
+                emph="lists"
+                count={listsLoading ? "Loading…" : `${lists.length} curated`}
+                moreHref="/lists/new"
+                moreLabel="New list →"
+              />
+
+              {listsError && (
+                <div className="note" style={{ marginBottom: 20 }}>
+                  {listsError}
+                </div>
+              )}
+              {listActionError && (
+                <div className="note" style={{ marginBottom: 20 }}>
+                  {listActionError}
+                </div>
+              )}
+
+              {!listsLoading && lists.length === 0 && (
+                <p className="pull" style={{ fontSize: 20, color: "var(--muted)" }}>
+                  No lists yet.{" "}
+                  <Link
+                    href="/lists/new"
+                    style={{
+                      fontStyle: "italic",
+                      color: "var(--ink)",
+                      borderBottom: "1px solid var(--ink)",
+                    }}
+                  >
+                    Start one →
+                  </Link>
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, 1fr)",
+                  gap: 32,
+                }}
+              >
+                {lists.map((list) => (
+                  <article
+                    key={list.id}
+                    style={{ borderTop: "1px solid var(--ink)", paddingTop: 20 }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: 12,
+                      }}
+                    >
+                      <Link href={`/lists/${list.id}`}>
+                        <h3
+                          className="display"
+                          style={{ fontSize: 28, lineHeight: 1.1, margin: 0 }}
+                        >
+                          {list.title}
+                        </h3>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteList(list.id)}
+                        disabled={listDeleting === list.id}
+                        className="eyebrow"
+                        style={{ cursor: "pointer", color: "var(--accent)" }}
+                      >
+                        {listDeleting === list.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
+                    <div className="eyebrow" style={{ marginTop: 8 }}>
+                      {list.is_ranked ? "Ranked" : "Unranked"} · {list.items.length}{" "}
+                      album{list.items.length === 1 ? "" : "s"} ·{" "}
+                      {list.likes_count ?? 0} like
+                      {(list.likes_count ?? 0) === 1 ? "" : "s"}
+                      {list.tags && list.tags.length > 0
+                        ? ` · ${list.tags.map((tag) => `#${tag}`).join(" ")}`
+                        : ""}
+                    </div>
+                    {list.description && (
+                      <p className="pull" style={{ fontSize: 16, marginTop: 8 }}>
+                        {list.description}
+                      </p>
+                    )}
+                    <Link
+                      href={`/lists/${list.id}`}
+                      style={{ display: "block", marginTop: 14 }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(4, 1fr)",
+                          gap: 8,
+                        }}
+                      >
+                        {list.items.slice(0, 4).map((item) => {
+                          const album = albumMap[item.spotify_album_id];
+                          return (
+                            <AlbumCover
+                              key={item.spotify_album_id}
+                              src={album?.image}
+                              alt={album?.name || "Album"}
+                            />
+                          );
+                        })}
+                        {list.items.length === 0 && (
+                          <span className="eyebrow">No albums yet.</span>
+                        )}
+                      </div>
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            {/* ══ COMMUNITY ══ */}
+            <section style={sectionStyle}>
+              <SectionHead
+                title="Community"
+                emph="Community"
+                count={`${followers.length} followers · ${following.length} following`}
+              />
+
+              {followActionError && (
+                <div className="note" style={{ marginBottom: 20 }}>
+                  {followActionError}
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.2fr 1fr",
+                  gap: 48,
+                  alignItems: "start",
+                }}
+              >
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>
+                    Find people
                   </div>
-                );
-              })}
-            </div>
-          </section>
+                  <input
+                    className="input"
+                    placeholder="Search by name or Spotify ID"
+                    value={followSearch}
+                    onChange={(event) => setFollowSearch(event.target.value)}
+                  />
+                  {followSearching && (
+                    <div className="eyebrow" style={{ marginTop: 8 }}>
+                      Searching…
+                    </div>
+                  )}
+                  {followError && (
+                    <div className="note" style={{ marginTop: 8 }}>
+                      {followError}
+                    </div>
+                  )}
+                  {!followSearching &&
+                    followSearch.trim().length > 1 &&
+                    followResults.length === 0 &&
+                    !followError && (
+                      <div className="eyebrow" style={{ marginTop: 8 }}>
+                        No users found yet.
+                      </div>
+                    )}
+                  <div style={{ marginTop: 8 }}>
+                    {followResults.map((person) => {
+                      const isFollowing = followingIds.includes(person.id);
+                      return (
+                        <div key={person.id}>
+                          {personRow(
+                            person,
+                            <button
+                              type="button"
+                              className="btn sm"
+                              onClick={() =>
+                                isFollowing
+                                  ? handleUnfollowUser(person.id)
+                                  : handleFollowUser(person.id)
+                              }
+                              disabled={followUpdatingId === person.id}
+                            >
+                              {followUpdatingId === person.id
+                                ? "Saving…"
+                                : isFollowing
+                                  ? "Unfollow"
+                                  : "Follow"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 28 }}>
+                  <div>
+                    <div className="eyebrow" style={{ marginBottom: 4 }}>
+                      Following
+                    </div>
+                    {followingLoading && (
+                      <div className="eyebrow">Loading following…</div>
+                    )}
+                    {!followingLoading && following.length === 0 && (
+                      <div className="pull" style={{ fontSize: 16, color: "var(--muted)" }}>
+                        You are not following anyone yet.
+                      </div>
+                    )}
+                    {following.map((person) => (
+                      <div key={`following-${person.id}`}>
+                        {personRow(
+                          person,
+                          <button
+                            type="button"
+                            className="btn sm"
+                            onClick={() => handleUnfollowUser(person.id)}
+                            disabled={followUpdatingId === person.id}
+                          >
+                            {followUpdatingId === person.id
+                              ? "Saving…"
+                              : "Unfollow"}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="eyebrow" style={{ marginBottom: 4 }}>
+                      Followers
+                    </div>
+                    {followersLoading && (
+                      <div className="eyebrow">Loading followers…</div>
+                    )}
+                    {!followersLoading && followers.length === 0 && (
+                      <div className="pull" style={{ fontSize: 16, color: "var(--muted)" }}>
+                        No followers yet.
+                      </div>
+                    )}
+                    {followers.map((person) => {
+                      const isFollowing = followingIds.includes(person.id);
+                      return (
+                        <div key={`follower-${person.id}`}>
+                          {personRow(
+                            person,
+                            <button
+                              type="button"
+                              className="btn sm"
+                              onClick={() =>
+                                isFollowing
+                                  ? handleUnfollowUser(person.id)
+                                  : handleFollowUser(person.id)
+                              }
+                              disabled={followUpdatingId === person.id}
+                            >
+                              {followUpdatingId === person.id
+                                ? "Saving…"
+                                : isFollowing
+                                  ? "Unfollow"
+                                  : "Follow"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          </>
         )}
       </main>
-    </div>
+    </Shell>
   );
 }

@@ -1,9 +1,12 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { Shell } from "@/components/Shell";
+import { SectionHead } from "@/components/SectionHead";
+import { AlbumCover } from "@/components/AlbumCover";
+import { Stars, rating10ToStars } from "@/components/Stars";
 
 type User = {
   id: number;
@@ -46,7 +49,6 @@ export default function AlbumPage() {
   const albumId = Array.isArray(rawId) ? rawId[0] : rawId;
 
   const [user, setUser] = useState<User | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const [album, setAlbum] = useState<AlbumDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export default function AlbumPage() {
             setAlbum(data.album);
           }
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setError("Could not load album details.");
         }
@@ -143,12 +145,10 @@ export default function AlbumPage() {
         const data = await response.json();
         if (!cancelled) {
           setUser(data.user || null);
-          setAuthChecked(true);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setUser(null);
-          setAuthChecked(true);
         }
       }
     }
@@ -180,7 +180,7 @@ export default function AlbumPage() {
         if (!cancelled) {
           setReviews(Array.isArray(data.reviews) ? data.reviews : []);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setReviewError("Could not load reviews.");
         }
@@ -239,7 +239,7 @@ export default function AlbumPage() {
       if (data.review) {
         setReviews((prev) => [data.review, ...prev]);
       }
-    } catch (err) {
+    } catch {
       setReviewError("Could not save review.");
     } finally {
       setSubmitting(false);
@@ -301,7 +301,7 @@ export default function AlbumPage() {
         );
         setEditingReviewId(null);
       }
-    } catch (err) {
+    } catch {
       setReviewActionError("Could not update review.");
     } finally {
       setReviewSaving(false);
@@ -327,7 +327,7 @@ export default function AlbumPage() {
       }
 
       setReviews((prev) => prev.filter((review) => review.id !== reviewId));
-    } catch (err) {
+    } catch {
       setReviewActionError("Could not delete review.");
     } finally {
       setReviewDeleting(null);
@@ -369,7 +369,7 @@ export default function AlbumPage() {
           )
         );
       }
-    } catch (err) {
+    } catch {
       setReviewActionError("Could not update pinned reviews.");
     } finally {
       setReviewPinning(null);
@@ -381,396 +381,541 @@ export default function AlbumPage() {
     if (Number.isNaN(date.getTime())) {
       return value;
     }
-    return date.toLocaleDateString();
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
+  function formatDuration(ms: number) {
+    if (!ms || Number.isNaN(ms)) {
+      return "";
+    }
+    const totalSeconds = Math.round(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  const maxCount = Math.max(...ratingDistribution, 1);
+  const sectionStyle: React.CSSProperties = {
+    padding: "48px 0",
+    borderTop: "1px solid var(--ink)",
+  };
+
   return (
-    <div className="min-h-screen text-[color:var(--foreground)]">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-12">
-        <header className="flex flex-col gap-6 border-b border-[color:var(--border)] pb-6">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-none bg-[color:var(--accent)] text-lg font-bold text-[#0a140c]">
-                J
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">
-                  Jukebox
-                </p>
-                <p className="font-mono text-xl font-semibold tracking-tight">
-                  Album details
-                </p>
-              </div>
-            </div>
-            <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
-              <Link
-                href="/"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Home
-              </Link>
-              <Link
-                href="/search"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Search
-              </Link>
-              <Link
-                href="/profile"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Profile
-              </Link>
-            </nav>
-            <div className="flex flex-wrap items-center gap-3">
-              {!authChecked && (
-                <span className="text-xs text-[var(--muted)]">
-                  Checking session...
-                </span>
-              )}
-              {user ? (
-                <span className="text-xs text-[var(--muted)]">
-                  Signed in as{" "}
-                  <span className="font-semibold text-[var(--foreground)]">
-                    {user.display_name || user.spotify_id}
-                  </span>
-                </span>
-              ) : (
-                <a
-                  className="inline-flex items-center justify-center rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
-                  href={`${apiUrl}/auth/spotify`}
-                >
-                  Continue with Spotify
-                </a>
-              )}
-            </div>
-          </div>
-          <p className="text-[var(--muted)]">
-            Deep dive into tracks, label, and metadata.
-          </p>
-        </header>
-
+    <Shell user={user} onLogout={undefined}>
+      <main style={{ maxWidth: 1320, margin: "0 auto", padding: "0 40px" }}>
         {loading && (
-          <div className="border border-[color:var(--border)] p-8 text-sm text-[var(--muted)]">
-            Loading album...
+          <div className="eyebrow" style={{ padding: "56px 0" }}>
+            Loading album…
           </div>
         )}
 
-        {error && (
-          <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
-            <p>{error}</p>
-          </div>
-        )}
-
-        {!loading && !error && album && (
-          <section className="grid gap-6 border border-[color:var(--border)] p-8 md:grid-cols-[240px_1fr]">
-            <div className="space-y-4">
-              <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                {album.images?.[0]?.url ? (
-                  <img
-                    src={album.images[0].url}
-                    alt={`${album.name} cover`}
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                ) : null}
-              </div>
-              <div className="space-y-1 text-sm text-[var(--muted)]">
-                <p>Release: {album.release_date}</p>
-                <p>Tracks: {album.total_tracks}</p>
-                {album.label && <p>Label: {album.label}</p>}
-                {album.genres?.length > 0 && (
-                  <p>Genres: {album.genres.join(", ")}</p>
-                )}
-              </div>
+        {error && !loading && (
+          <section style={{ padding: "56px 0" }}>
+            <div className="note" role="alert" style={{ maxWidth: 480 }}>
+              {error}
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-2xl font-semibold text-[var(--foreground)]">
-                  {album.name}
-                </h2>
-                <p className="text-sm text-[var(--muted)]">
-                  {album.artists.join(", ")}
-                </p>
-              </div>
-
-              <div className="border border-[color:var(--border)] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                    Ratings
-                  </p>
-                  <span className="text-xs text-[var(--muted)]">
-                    {reviews.length} rating{reviews.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                {reviews.length === 0 ? (
-                  <p className="mt-3 text-sm text-[var(--muted)]">
-                    No ratings yet.
-                  </p>
-                ) : (
-                  <>
-                    <p className="mt-3 text-3xl font-semibold text-[var(--foreground)]">
-                      {averageRating}
-                    </p>
-                    <div className="mt-3 space-y-1">
-                      {Array.from({ length: 10 }, (_, idx) => 10 - idx).map(
-                        (score) => {
-                          const count = ratingDistribution[score - 1] || 0;
-                          const maxCount = Math.max(...ratingDistribution, 1);
-                          const width = `${(count / maxCount) * 100}%`;
-                          return (
-                            <div
-                              key={score}
-                              className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[var(--muted-strong)]"
-                            >
-                              <span className="w-4 text-right">{score}</span>
-                              <div className="h-1.5 flex-1 bg-[color:var(--border)]">
-                                <div
-                                  className="h-full bg-[var(--accent)]"
-                                  style={{ width }}
-                                />
-                              </div>
-                              <span className="w-6 text-right">{count}</span>
-                            </div>
-                          );
-                        }
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Tracklist
-                </p>
-                <div className="max-h-[360px] space-y-2 overflow-y-auto pr-2">
-                  {(album.tracks || []).map((track) => (
-                    <div
-                      key={track.id}
-                      className="flex items-center justify-between border-b border-[color:var(--border)] py-2 text-xs text-[var(--foreground)]"
-                    >
-                      <span>
-                        {track.track_number}. {track.name}
-                      </span>
-                      {track.preview_url ? (
-                        <a
-                          className="text-[var(--accent-strong)] hover:text-[var(--accent)]"
-                          href={track.preview_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Preview
-                        </a>
-                      ) : (
-                        <span className="text-zinc-600">No preview</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div style={{ marginTop: 20 }}>
+              <Link href="/search" className="btn">
+                Back to search
+              </Link>
             </div>
           </section>
         )}
 
-        <section className="space-y-6 border border-[color:var(--border)] p-8">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Ratings & reviews
-              </h2>
-              <p className="text-sm text-[var(--muted)]">
-                {averageRating
-                  ? `Average ${averageRating} · ${reviews.length} review${
+        {!loading && !error && album && (
+          <>
+            {/* ══════════ HERO ══════════ */}
+            <section
+              style={{
+                display: "grid",
+                gridTemplateColumns: "0.9fr 1.1fr",
+                gap: 48,
+                padding: "56px 0 48px",
+                alignItems: "start",
+              }}
+            >
+              <AlbumCover
+                src={album.images?.[0]?.url}
+                alt={`${album.name} cover`}
+              />
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 16 }}>
+                  {album.artists.join(", ")}
+                </div>
+                <h1
+                  className="display"
+                  style={{
+                    fontSize: "clamp(48px, 6vw, 92px)",
+                    lineHeight: 0.95,
+                    margin: 0,
+                  }}
+                >
+                  {album.name}
+                </h1>
+                <div
+                  className="eyebrow"
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 18,
+                    marginTop: 24,
+                  }}
+                >
+                  <span>
+                    {album.release_date
+                      ? album.release_date.slice(0, 4)
+                      : "—"}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    {album.total_tracks} track
+                    {album.total_tracks === 1 ? "" : "s"}
+                  </span>
+                  {album.label && (
+                    <>
+                      <span>·</span>
+                      <span>{album.label}</span>
+                    </>
+                  )}
+                </div>
+                {album.genres?.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginTop: 16,
+                    }}
+                  >
+                    {album.genres.map((genre) => (
+                      <span
+                        key={genre}
+                        className="eyebrow"
+                        style={{
+                          border: "1px solid var(--line-strong)",
+                          padding: "4px 10px",
+                        }}
+                      >
+                        {genre}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* average + distribution */}
+                <div style={{ marginTop: 32 }}>
+                  {reviews.length === 0 ? (
+                    <p className="pull" style={{ fontSize: 20, color: "var(--muted)" }}>
+                      No ratings yet — be the first below.
+                    </p>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "auto 1fr",
+                        gap: 32,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <div
+                          className="display"
+                          style={{ fontSize: 72, lineHeight: 1 }}
+                        >
+                          {averageRating}
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          <Stars
+                            value={rating10ToStars(Number(averageRating))}
+                            size={16}
+                          />
+                        </div>
+                        <div className="eyebrow" style={{ marginTop: 6 }}>
+                          {reviews.length} rating
+                          {reviews.length === 1 ? "" : "s"} · out of 10
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        {Array.from({ length: 10 }, (_, idx) => 10 - idx).map(
+                          (score) => {
+                            const count = ratingDistribution[score - 1] || 0;
+                            const width = `${(count / maxCount) * 100}%`;
+                            return (
+                              <div
+                                key={score}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
+                                }}
+                              >
+                                <span
+                                  className="eyebrow"
+                                  style={{ width: 16, textAlign: "right" }}
+                                >
+                                  {score}
+                                </span>
+                                <div
+                                  style={{
+                                    flex: 1,
+                                    height: 8,
+                                    background: "var(--bg-strong)",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width,
+                                      height: "100%",
+                                      background: "var(--accent)",
+                                    }}
+                                  />
+                                </div>
+                                <span
+                                  className="eyebrow"
+                                  style={{ width: 20, textAlign: "right" }}
+                                >
+                                  {count}
+                                </span>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* ══════════ TRACKLIST ══════════ */}
+            {album.tracks?.length > 0 && (
+              <section style={sectionStyle}>
+                <SectionHead
+                  title="Tracklist"
+                  emph="Tracklist"
+                  count={`${album.tracks.length} track${
+                    album.tracks.length === 1 ? "" : "s"
+                  }`}
+                />
+                <div style={{ display: "grid", gap: 0 }}>
+                  {album.tracks.map((track, i) => (
+                    <div
+                      key={track.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "40px 1fr auto auto",
+                        gap: 20,
+                        alignItems: "center",
+                        padding: "12px 0",
+                        borderTop:
+                          i === 0
+                            ? "1px solid var(--ink)"
+                            : "1px solid var(--line)",
+                        borderBottom:
+                          i === album.tracks.length - 1
+                            ? "1px solid var(--ink)"
+                            : undefined,
+                      }}
+                    >
+                      <span
+                        className="display"
+                        style={{ fontSize: 22, fontStyle: "italic" }}
+                      >
+                        {track.track_number}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 500 }}>
+                        {track.name}
+                      </span>
+                      <span className="eyebrow" style={{ color: "var(--muted-2)" }}>
+                        {formatDuration(track.duration_ms)}
+                      </span>
+                      {track.preview_url ? (
+                        <a
+                          href={track.preview_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="eyebrow"
+                          style={{
+                            color: "var(--ink)",
+                            borderBottom: "1px solid var(--ink)",
+                          }}
+                        >
+                          Preview →
+                        </a>
+                      ) : (
+                        <span className="eyebrow" style={{ color: "var(--muted-2)" }}>
+                          No preview
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        {/* ══════════ REVIEWS ══════════ */}
+        {!loading && !error && album && (
+          <section style={sectionStyle}>
+            <SectionHead
+              title="Ratings & reviews"
+              emph="reviews"
+              count={
+                averageRating
+                  ? `Avg ${averageRating} · ${reviews.length} review${
                       reviews.length === 1 ? "" : "s"
                     }`
-                  : "No reviews yet."}
-              </p>
-            </div>
-            <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-              Rate 1–10
-            </span>
-          </div>
-
-          <form
-            onSubmit={handleReviewSubmit}
-            className="flex flex-col gap-4 border border-[color:var(--border)] p-5"
-          >
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
-              <label className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                Rating
-              </label>
-              <select
-                className="w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] md:w-40"
-                value={ratingValue}
-                onChange={(event) => setRatingValue(event.target.value)}
-              >
-                {Array.from({ length: 10 }, (_, idx) => String(idx + 1)).map(
-                  (value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  )
-                )}
-              </select>
-              <span className="text-xs text-[var(--muted)]">
-                {user ? "Signed in" : "Sign in to publish"}
-              </span>
-            </div>
-
-            <textarea
-              className="min-h-[120px] rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
-              placeholder="Write your review (optional)"
-              value={bodyValue}
-              onChange={(event) => setBodyValue(event.target.value)}
+                  : "No reviews yet"
+              }
             />
 
-            {reviewError && (
-              <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
-                {reviewError}
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="submit"
-                className="rounded-none bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-                disabled={submitting || !user}
+            {/* compose */}
+            <form
+              onSubmit={handleReviewSubmit}
+              style={{
+                border: "1px solid var(--line-strong)",
+                padding: 20,
+                display: "grid",
+                gap: 14,
+                marginBottom: 32,
+              }}
+            >
+              <div
+                className="display"
+                style={{ fontSize: 24, fontStyle: "italic" }}
               >
-                {submitting ? "Posting..." : "Post review"}
-              </button>
-              {!user && (
-                <a
-                  className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
-                  href={`${apiUrl}/auth/spotify`}
+                {user ? "Log your listen" : "Sign in to leave a review"}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="eyebrow">Rating</span>
+                <select
+                  className="input"
+                  style={{ width: 90 }}
+                  value={ratingValue}
+                  onChange={(event) => setRatingValue(event.target.value)}
+                  disabled={!user}
                 >
-                  Continue with Spotify
-                </a>
-              )}
-            </div>
-          </form>
+                  {Array.from({ length: 10 }, (_, idx) => String(idx + 1)).map(
+                    (value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    )
+                  )}
+                </select>
+                <span className="eyebrow">/ 10</span>
+                <Stars value={rating10ToStars(Number(ratingValue))} />
+              </div>
+              <textarea
+                className="input"
+                style={{ minHeight: 110 }}
+                placeholder="Write your review (optional)"
+                value={bodyValue}
+                onChange={(event) => setBodyValue(event.target.value)}
+                disabled={!user}
+              />
+              {reviewError && <div className="note">{reviewError}</div>}
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {user ? (
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={submitting}
+                  >
+                    {submitting ? "Posting…" : "Post review"}
+                  </button>
+                ) : (
+                  <a className="btn primary" href={`${apiUrl}/auth/spotify`}>
+                    Continue with Spotify
+                  </a>
+                )}
+              </div>
+            </form>
 
-          <div className="space-y-4">
-            {reviewsLoading && (
-              <p className="text-sm text-[var(--muted)]">Loading reviews...</p>
-            )}
+            {/* list */}
             {reviewActionError && (
-              <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+              <div className="note" style={{ marginBottom: 20 }}>
                 {reviewActionError}
               </div>
             )}
+            {reviewsLoading && (
+              <div className="eyebrow">Loading reviews…</div>
+            )}
             {!reviewsLoading && reviews.length === 0 && (
-              <p className="text-sm text-[var(--muted)]">
+              <p className="pull" style={{ fontSize: 20, color: "var(--muted)" }}>
                 No reviews yet. Be the first to write one.
               </p>
             )}
-            {reviews.map((review) => (
-              <div
-                key={review.id}
-                className="border border-[color:var(--border)] p-5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-[var(--foreground)]">
-                    {review.user.display_name || review.user.spotify_id}
-                  </div>
-                  <div className="text-xs text-[var(--muted)]">
-                    {formatDate(review.created_at)}
-                  </div>
-                </div>
-                {editingReviewId === review.id ? (
-                  <div className="mt-3 space-y-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <label className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Rating
-                      </label>
-                      <select
-                        className="rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                        value={editRatingValue}
-                        onChange={(event) => setEditRatingValue(event.target.value)}
-                      >
-                        {Array.from({ length: 10 }, (_, idx) => String(idx + 1)).map(
-                          (value) => (
-                            <option key={value} value={value}>
-                              {value}
-                            </option>
-                          )
+
+            <div style={{ display: "grid", gap: 0 }}>
+              {reviews.map((review, i) => {
+                const isEditing = editingReviewId === review.id;
+                const isOwner = user && review.user?.id === user.id;
+                return (
+                  <article
+                    key={review.id}
+                    style={{
+                      padding: "24px 0",
+                      borderTop:
+                        i === 0 ? "1px solid var(--ink)" : "1px solid var(--line)",
+                      borderBottom:
+                        i === reviews.length - 1
+                          ? "1px solid var(--ink)"
+                          : undefined,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: 16,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>
+                          {review.user.display_name || review.user.spotify_id}
+                        </span>
+                        {review.is_pinned && (
+                          <span className="eyebrow" style={{ color: "var(--accent)" }}>
+                            Pinned
+                          </span>
                         )}
-                      </select>
-                    </div>
-                    <textarea
-                      className="min-h-[100px] w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                      value={editBodyValue}
-                      onChange={(event) => setEditBodyValue(event.target.value)}
-                    />
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted)]">
-                      <button
-                        type="button"
-                        className="rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-                        onClick={() => handleReviewUpdate(review.id)}
-                        disabled={reviewSaving}
-                      >
-                        {reviewSaving ? "Saving..." : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        className="border border-[color:var(--border)] px-3 py-2 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                        onClick={() => setEditingReviewId(null)}
-                        disabled={reviewSaving}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="mt-2 text-xs uppercase tracking-[0.2em] text-[var(--accent-strong)]">
-                      Rating {review.rating}/10
-                    </div>
-                    {review.body && (
-                      <p className="mt-3 text-sm text-[var(--foreground)]">
-                        {review.body}
-                      </p>
-                    )}
-                    {user && review.user?.id === user.id && (
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-[0.3em] text-[var(--muted)]">
-                        <button
-                          type="button"
-                          className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)]"
-                          onClick={() => startEditReview(review)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="border border-[color:var(--border)] px-3 py-2 transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-                          onClick={() =>
-                            handleReviewPin(review.id, !review.is_pinned)
-                          }
-                          disabled={reviewPinning === review.id}
-                        >
-                          {reviewPinning === review.id
-                            ? "Saving..."
-                            : review.is_pinned
-                            ? "Unpin"
-                            : "Pin"}
-                        </button>
-                        <button
-                          type="button"
-                          className="border border-red-500/40 px-3 py-2 text-red-200 transition hover:border-red-500"
-                          onClick={() => handleReviewDelete(review.id)}
-                          disabled={reviewDeleting === review.id}
-                        >
-                          {reviewDeleting === review.id ? "Deleting..." : "Delete"}
-                        </button>
                       </div>
+                      <span className="eyebrow">
+                        {formatDate(review.created_at)}
+                      </span>
+                    </div>
+
+                    {isEditing ? (
+                      <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 560 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <span className="eyebrow">Rating</span>
+                          <select
+                            className="input"
+                            style={{ width: 90 }}
+                            value={editRatingValue}
+                            onChange={(event) =>
+                              setEditRatingValue(event.target.value)
+                            }
+                          >
+                            {Array.from({ length: 10 }, (_, idx) =>
+                              String(idx + 1)
+                            ).map((value) => (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="eyebrow">/ 10</span>
+                        </div>
+                        <textarea
+                          className="input"
+                          style={{ minHeight: 90 }}
+                          value={editBodyValue}
+                          onChange={(event) => setEditBodyValue(event.target.value)}
+                        />
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <button
+                            type="button"
+                            className="btn primary sm"
+                            onClick={() => handleReviewUpdate(review.id)}
+                            disabled={reviewSaving}
+                          >
+                            {reviewSaving ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn sm"
+                            onClick={() => setEditingReviewId(null)}
+                            disabled={reviewSaving}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            marginTop: 12,
+                          }}
+                        >
+                          <Stars value={rating10ToStars(review.rating)} />
+                          <span className="eyebrow">{review.rating}/10</span>
+                        </div>
+                        {review.body && (
+                          <p
+                            className="pull"
+                            style={{ fontSize: 20, marginTop: 12, color: "var(--ink)" }}
+                          >
+                            &ldquo;{review.body}&rdquo;
+                          </p>
+                        )}
+                        {isOwner && (
+                          <div
+                            className="eyebrow"
+                            style={{ display: "flex", gap: 16, marginTop: 14 }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => startEditReview(review)}
+                              className="eyebrow"
+                              style={{
+                                cursor: "pointer",
+                                color: "var(--ink)",
+                                borderBottom: "1px solid var(--ink)",
+                              }}
+                            >
+                              Edit →
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleReviewPin(review.id, !review.is_pinned)
+                              }
+                              disabled={reviewPinning === review.id}
+                              className="eyebrow"
+                              style={{
+                                cursor: "pointer",
+                                color: "var(--ink)",
+                                borderBottom: "1px solid var(--ink)",
+                              }}
+                            >
+                              {reviewPinning === review.id
+                                ? "Saving…"
+                                : review.is_pinned
+                                  ? "Unpin"
+                                  : "Pin"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleReviewDelete(review.id)}
+                              disabled={reviewDeleting === review.id}
+                              className="eyebrow"
+                              style={{ cursor: "pointer", color: "var(--accent)" }}
+                            >
+                              {reviewDeleting === review.id ? "Deleting…" : "Delete"}
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </main>
-    </div>
+    </Shell>
   );
 }

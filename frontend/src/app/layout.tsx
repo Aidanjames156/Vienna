@@ -1,17 +1,27 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
+import { Instrument_Serif, Geist, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const plexSans = IBM_Plex_Sans({
-  variable: "--font-plex-sans",
-  weight: ["300", "400", "500", "600", "700"],
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-display-serif",
+  weight: ["400"],
+  style: ["normal", "italic"],
   subsets: ["latin"],
+  display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
-  weight: ["400", "500", "600", "700"],
+const geist = Geist({
+  variable: "--font-ui",
+  weight: ["300", "400", "500", "600", "700"],
   subsets: ["latin"],
+  display: "swap",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  variable: "--font-mono-code",
+  weight: ["400", "500"],
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -26,7 +36,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${plexSans.variable} ${spaceGrotesk.variable} antialiased`}>
+      <body
+        className={`${instrumentSerif.variable} ${geist.variable} ${jetBrainsMono.variable} antialiased`}
+      >
         {children}
       </body>
     </html>

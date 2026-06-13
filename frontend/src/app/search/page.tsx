@@ -1,8 +1,10 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Shell } from "@/components/Shell";
+import { SectionHead } from "@/components/SectionHead";
+import { AlbumCover } from "@/components/AlbumCover";
 
 type User = {
   id: number;
@@ -27,6 +29,7 @@ export default function SearchPage() {
   const [results, setResults] = useState<AlbumSummary[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
 
   const canSearch = useMemo(() => query.trim().length > 1, [query]);
 
@@ -43,7 +46,7 @@ export default function SearchPage() {
           setUser(data.user || null);
           setAuthChecked(true);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setUser(null);
           setAuthChecked(true);
@@ -67,6 +70,7 @@ export default function SearchPage() {
     }
 
     setLoadingSearch(true);
+    setSearched(true);
     try {
       const response = await fetch(
         `${apiUrl}/spotify/search?query=${encodeURIComponent(query.trim())}`,
@@ -79,7 +83,7 @@ export default function SearchPage() {
       }
       const data = await response.json();
       setResults(data.albums || []);
-    } catch (err) {
+    } catch {
       setError("Search failed. Try again.");
     } finally {
       setLoadingSearch(false);
@@ -95,162 +99,164 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-10 text-[color:var(--foreground)]">
-      <main className="mx-auto w-full max-w-6xl space-y-10">
-        <header className="flex flex-col gap-6 border-b border-[color:var(--border)] pb-6">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-none bg-[color:var(--accent)] text-lg font-bold text-[#0a140c]">
-                J
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">
-                  Jukebox
-                </p>
-                <p className="font-mono text-xl font-semibold tracking-tight">
-                  Album diary for music obsessives
-                </p>
-              </div>
-            </div>
-            <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
-              <Link
-                href="/"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Home
-              </Link>
-              <span className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)]">
-                Search
-              </span>
-              <Link
-                href="/profile"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Profile
-              </Link>
-            </nav>
-            <div className="flex flex-wrap items-center gap-3">
-              {!authChecked && (
-                <span className="text-xs text-[var(--muted)]">
-                  Checking session...
-                </span>
-              )}
-              {user ? (
-                <>
-                  <span className="text-sm text-[var(--muted)]">
-                    Signed in as{" "}
-                    <span className="font-semibold text-[var(--foreground)]">
-                      {user.display_name || user.spotify_id}
-                    </span>
-                  </span>
-                  <button
-                    className="rounded-none border border-[color:var(--border)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                    onClick={handleLogout}
-                  >
-                    Log out
-                  </button>
-                </>
-              ) : (
-                <a
-                  className="inline-flex items-center justify-center rounded-none bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
-                  href={`${apiUrl}/auth/spotify`}
-                >
-                  Continue with Spotify
-                </a>
-              )}
-            </div>
+    <Shell user={user} onLogout={handleLogout}>
+      <main style={{ maxWidth: 1320, margin: "0 auto", padding: "0 40px" }}>
+        {/* ══════════ HERO ══════════ */}
+        <section style={{ padding: "56px 0 40px" }}>
+          <div className="eyebrow" style={{ marginBottom: 18 }}>
+            The catalog
           </div>
-          <div className="grid gap-6 md:grid-cols-[1.4fr_1fr]">
-            <div className="space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                Rate and review the albums you love.
-              </h1>
-              <p className="text-[var(--muted)]">
-                Log listens, write reviews, and build your personal canon.
-              </p>
-            </div>
-            <div className="border border-[color:var(--border)] p-4 text-sm text-[var(--muted)]">
-              <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-              
-              </p>
-              <p className="mt-2">
-                Search any album without signing in. Log in to rate and
-                review.
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <form
-          onSubmit={handleSearch}
-          className="flex flex-col gap-3 border-b border-[color:var(--border)] pb-6 md:flex-row"
-        >
-          <input
-            className="flex-1 rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-5 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
-            placeholder="Search for an album or artist"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <button
-            type="submit"
-            className="rounded-none bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-            disabled={!canSearch || loadingSearch}
+          <h1
+            className="display"
+            style={{ fontSize: "clamp(48px, 6vw, 88px)", margin: 0, maxWidth: 880 }}
           >
-            {loadingSearch ? "Searching..." : "Search"}
-          </button>
-        </form>
+            Find the record, then <em>have your say.</em>
+          </h1>
+          <p className="pull" style={{ fontSize: 22, marginTop: 24, maxWidth: 520 }}>
+            Search any album in the Spotify catalog.{" "}
+            {authChecked && !user
+              ? "Sign in to rate and review what you find."
+              : "Open one to rate it, review it, or add it to a list."}
+          </p>
 
-        {error && (
-          <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {error}
-          </div>
-        )}
+          {/* search form */}
+          <form
+            onSubmit={handleSearch}
+            style={{
+              display: "flex",
+              gap: 10,
+              marginTop: 28,
+              maxWidth: 640,
+            }}
+          >
+            <input
+              className="input"
+              style={{ flex: 1, padding: "12px 16px", fontSize: 14 }}
+              placeholder="Search for an album or artist"
+              aria-label="Search for an album or artist"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <button
+              type="submit"
+              className="btn primary"
+              disabled={!canSearch || loadingSearch}
+              style={
+                !canSearch || loadingSearch
+                  ? { opacity: 0.5, cursor: "not-allowed" }
+                  : undefined
+              }
+            >
+              {loadingSearch ? "Searching…" : "Search"}
+            </button>
+          </form>
+          {!canSearch && query.trim().length > 0 && (
+            <div className="eyebrow" style={{ marginTop: 10 }}>
+              Type at least two characters
+            </div>
+          )}
+        </section>
 
-        <div className="grid gap-6">
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-              Results
-            </h2>
-            {results.length === 0 && (
-              <p className="text-sm text-[var(--muted)]">
-                Start by searching for an album.
-              </p>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* ══════════ RESULTS ══════════ */}
+        <section style={{ padding: "48px 0", borderTop: "1px solid var(--ink)" }}>
+          <SectionHead
+            title="Results"
+            emph="Results"
+            count={
+              loadingSearch
+                ? "Searching…"
+                : results.length > 0
+                  ? `${results.length} album${results.length === 1 ? "" : "s"}`
+                  : ""
+            }
+          />
+
+          {error && (
+            <div className="note" style={{ marginBottom: 20 }} role="alert">
+              {error}
+            </div>
+          )}
+
+          {loadingSearch && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 16,
+              }}
+            >
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} aria-hidden="true">
+                  <div
+                    style={{
+                      aspectRatio: "1/1",
+                      background: "var(--bg-strong)",
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: 12,
+                      width: "70%",
+                      background: "var(--bg-strong)",
+                      marginTop: 12,
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: 10,
+                      width: "45%",
+                      background: "var(--bg-strong)",
+                      marginTop: 8,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loadingSearch && !error && results.length === 0 && (
+            <p className="pull" style={{ fontSize: 20, color: "var(--muted)" }}>
+              {searched
+                ? "No albums matched that search. Try another title or artist."
+                : "Start by searching for an album or artist above."}
+            </p>
+          )}
+
+          {!loadingSearch && results.length > 0 && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 16,
+              }}
+            >
               {results.map((album) => (
-                <Link
-                  key={album.id}
-                  href={`/albums/${album.id}`}
-                  className="group flex flex-col items-start gap-3 text-left"
-                >
-                    <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                      {album.image ? (
-                        <img
-                          src={album.image}
-                          alt={`${album.name} cover`}
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      ) : null}
+                <Link key={album.id} href={`/albums/${album.id}`}>
+                  <AlbumCover src={album.image} alt={`${album.name} cover`} />
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>
+                      {album.name}
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--foreground)]">
-                        {album.name}
-                      </p>
-                      <p className="text-xs text-[var(--muted)]">
-                        {album.artists.join(", ")}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--muted-strong)]">
-                        <span>
-                          {album.release_date} • {album.total_tracks} tracks
-                        </span>
-                      </div>
+                    <div className="eyebrow" style={{ marginTop: 2 }}>
+                      {album.artists.join(", ")}
                     </div>
+                    <div
+                      className="eyebrow"
+                      style={{ marginTop: 6, color: "var(--muted-2)" }}
+                    >
+                      {album.release_date
+                        ? album.release_date.slice(0, 4)
+                        : "—"}{" "}
+                      · {album.total_tracks} track
+                      {album.total_tracks === 1 ? "" : "s"}
+                    </div>
+                  </div>
                 </Link>
               ))}
             </div>
-          </section>
-        </div>
+          )}
+        </section>
       </main>
-    </div>
+    </Shell>
   );
 }

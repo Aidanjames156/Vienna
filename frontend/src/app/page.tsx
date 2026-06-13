@@ -1,8 +1,11 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Shell } from "@/components/Shell";
+import { SectionHead } from "@/components/SectionHead";
+import { AlbumCover } from "@/components/AlbumCover";
+import { Stars } from "@/components/Stars";
 
 type User = {
   id: number;
@@ -28,25 +31,21 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadUser() {
       try {
-        const response = await fetch(`${apiUrl}/auth/me`, {
-          credentials: "include",
-        });
+        const response = await fetch(`${apiUrl}/auth/me`, { credentials: "include" });
         const data = await response.json();
         if (!cancelled) {
           setUser(data.user || null);
           setAuthChecked(true);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setUser(null);
           setAuthChecked(true);
         }
       }
     }
-
     loadUser();
     return () => {
       cancelled = true;
@@ -55,34 +54,25 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadTrending() {
       setTrendingLoading(true);
       setTrendingError(null);
       try {
-        const response = await fetch(
-          `${apiUrl}/spotify/trending?limit=8`,
-          { credentials: "include" }
-        );
-        if (!response.ok) {
-          throw new Error("trending_failed");
-        }
+        const response = await fetch(`${apiUrl}/spotify/trending?limit=8`, {
+          credentials: "include",
+        });
+        if (!response.ok) throw new Error("trending_failed");
         const data = await response.json();
-        if (!cancelled) {
-          setTrending(Array.isArray(data.albums) ? data.albums : []);
-        }
-      } catch (err) {
+        if (!cancelled) setTrending(Array.isArray(data.albums) ? data.albums : []);
+      } catch {
         if (!cancelled) {
           setTrendingError("Could not load trending albums.");
           setTrending([]);
         }
       } finally {
-        if (!cancelled) {
-          setTrendingLoading(false);
-        }
+        if (!cancelled) setTrendingLoading(false);
       }
     }
-
     loadTrending();
     return () => {
       cancelled = true;
@@ -97,230 +87,169 @@ export default function Home() {
     setUser(null);
   }
 
+  // Derive hero (pick of the week) + trending tail
+  const pick = trending[0];
+  const trendingTail = trending.slice(1, 8);
+
   return (
-    <div className="min-h-screen text-[color:var(--foreground)]">
-      <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,197,94,0.18),_rgba(8,10,12,0.9)_55%)]">
-        <div className="pointer-events-none absolute left-0 top-0 h-full w-full bg-[linear-gradient(135deg,_rgba(255,255,255,0.04),_transparent_40%)]" />
-        <header className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10">
-          <div className="flex flex-wrap items-center justify-between gap-6 border-b border-[color:var(--border)] pb-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-none bg-[color:var(--accent)] text-lg font-bold text-[#0a140c]">
-                J
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">
-                  Jukebox
-                </p>
-                <p className="font-mono text-xl font-semibold tracking-tight">
-                  For music obsessives
-                </p>
-              </div>
+    <Shell user={user} onLogout={handleLogout}>
+      <main style={{ maxWidth: 1320, margin: "0 auto", padding: "0 40px" }}>
+        {/* ══════════ HERO ══════════ */}
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1.1fr 1fr",
+            gap: 48,
+            padding: "56px 0 64px",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 18 }}>
+              This week in listening
             </div>
-            <nav className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
-              <span className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)]">
-                Home
-              </span>
-              <Link
-                href="/search"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Search
-              </Link>
-              <Link
-                href="/profile"
-                className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-              >
-                Profile
-              </Link>
-            </nav>
-            <div className="flex flex-wrap items-center gap-3">
-              {!authChecked && (
-                <span className="text-xs text-[var(--muted)]">
-                  Checking session...
-                </span>
-              )}
-              {user ? (
+            <h1
+              className="display"
+              style={{
+                fontSize: "clamp(56px, 7vw, 104px)",
+                margin: 0,
+              }}
+            >
+              Track, rate
+              <br />& <em>review</em> the
+              <br />
+              music you
+              <br />
+              live for.
+            </h1>
+            <p className="pull" style={{ fontSize: 22, marginTop: 28, maxWidth: 480 }}>
+              A living diary of the records that shaped your year. Save
+              ratings, write reviews, curate ranked lists.
+            </p>
+            <div style={{ display: "flex", gap: 10, marginTop: 28 }}>
+              {!authChecked ? null : user ? (
                 <>
-                  <span className="text-sm text-[var(--muted)]">
-                    Signed in as{" "}
-                    <span className="font-semibold text-[var(--foreground)]">
-                      {user.display_name || user.spotify_id}
-                    </span>
-                  </span>
-                  <button
-                    className="rounded-none border border-[color:var(--border)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                    onClick={handleLogout}
-                  >
-                    Log out
-                  </button>
+                  <Link href="/search" className="btn primary">
+                    Log a listen
+                  </Link>
+                  <Link href="/profile" className="btn">
+                    Your profile
+                  </Link>
                 </>
               ) : (
-                <a
-                  className="inline-flex items-center justify-center rounded-none bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
-                  href={`${apiUrl}/auth/spotify`}
-                >
-                  Continue with Spotify
-                </a>
+                <>
+                  <a className="btn primary" href={`${apiUrl}/auth/spotify`}>
+                    Continue with Spotify
+                  </a>
+                  <Link href="/search" className="btn">
+                    Explore albums
+                  </Link>
+                </>
               )}
             </div>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-4">
-              <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted-strong)]">
-                Your listening ledger
-              </p>
-              <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
-                Track, rate, and review the music you live for.
-              </h1>
-              <p className="max-w-xl text-sm text-[var(--muted)]">
-                Build a living diary of the records that shaped your year. Save
-                ratings, write reviews, and curate ranked lists that say more
-                than a playlist ever could.
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
-                {!user && (
-                  <a
-                    className="rounded-none bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)]"
-                    href={`${apiUrl}/auth/spotify`}
+          {/* pick of the week — first trending album, bleeding tabloid-style */}
+          <div>
+            {pick ? (
+              <Link href={`/albums/${pick.id}`}>
+                <AlbumCover src={pick.image} alt={`${pick.name} cover`}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 20,
+                      right: 20,
+                      background: "var(--paper)",
+                      color: "var(--ink)",
+                      padding: "6px 10px",
+                    }}
+                    className="eyebrow"
                   >
-                    Continue with Spotify
-                  </a>
-                )}
-                <Link
-                  className="rounded-none border border-[color:var(--border)] px-6 py-3 text-sm text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                  href="/search"
-                >
-                  Explore albums
-                </Link>
-              </div>
-            </div>
-            <div className="grid gap-4">
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-5">
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                  Featured
-                </p>
-                <p className="mt-2 text-sm text-[var(--foreground)]">
-                  Log listens, pin your
-                  favorites, and show the world your top three.
-                </p>
-              </div>
-              <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
-                <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                  Discover
-                </p>
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  Search our catalog. Log in when you are ready
-                  to rate and review.
-                </p>
-              </div>
-            </div>
+                    Pick of the week
+                  </div>
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 20,
+                      bottom: 20,
+                      color: "#ffffff",
+                      background: "rgba(0,0,0,0.45)",
+                      padding: "6px 10px",
+                      backdropFilter: "blur(6px)",
+                    }}
+                    className="eyebrow"
+                  >
+                    {pick.name} — {pick.artists.join(", ")}
+                  </div>
+                </AlbumCover>
+              </Link>
+            ) : (
+              <AlbumCover src={null} alt="Loading pick of the week" />
+            )}
           </div>
-        </header>
-      </div>
-
-      <main className="mx-auto w-full max-w-6xl space-y-12 px-6 py-12">
-        <section className="grid gap-4 md:grid-cols-3">
-          {[
-            {
-              title: "Log your listens",
-              description:
-                "Rate albums from 1 to 10 and build a personal listening history.",
-            },
-            {
-              title: "Curate ranked lists",
-              description:
-                "Order your favorite records in ranked lists.",
-            },
-            {
-              title: "Pin your top reviews",
-              description:
-                "Showcase the reviews that define your taste on your profile.",
-            },
-          ].map((feature) => (
-            <div
-              key={feature.title}
-              className="border border-[color:var(--border)] bg-[color:var(--surface)] p-5"
-            >
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                {feature.title}
-              </p>
-              <p className="mt-3 text-sm text-[var(--muted)]">
-                {feature.description}
-              </p>
-            </div>
-          ))}
         </section>
 
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                Trending
-              </p>
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Trending albums
-              </h2>
-            </div>
-            <Link
-              href="/search"
-              className="rounded-none border border-[color:var(--border)] px-3 py-2 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
-            >
-              Explore
-            </Link>
-          </div>
+        {/* ══════════ TRENDING ══════════ */}
+        <section style={{ padding: "48px 0", borderTop: "1px solid var(--ink)" }}>
+          <SectionHead
+            title="Trending now"
+            emph="now"
+            count="Updated every 15 min"
+            moreHref="/search"
+            moreLabel="Explore →"
+          />
 
           {trendingLoading && (
-            <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--muted)]">
-              Loading trending albums...
+            <div
+              className="eyebrow"
+              style={{ padding: "24px 0", color: "var(--muted)" }}
+            >
+              Loading trending albums…
             </div>
           )}
 
           {trendingError && (
-            <div className="border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+            <div
+              style={{
+                border: "1px solid var(--line)",
+                background: "var(--bg-strong)",
+                padding: 16,
+                color: "var(--ink-2)",
+                fontSize: 13,
+              }}
+              role="alert"
+            >
               {trendingError}
             </div>
           )}
 
-          {!trendingLoading && !trendingError && trending.length === 0 && (
-            <div className="border border-[color:var(--border)] bg-[color:var(--surface)] p-6 text-sm text-[var(--muted)]">
+          {!trendingLoading && !trendingError && trendingTail.length === 0 && !pick && (
+            <div
+              className="eyebrow"
+              style={{ padding: "24px 0", color: "var(--muted)" }}
+            >
               No trending albums available right now.
             </div>
           )}
 
-          {!trendingLoading && trending.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {trending.map((album) => (
-                <Link
-                  key={album.id}
-                  href={`/albums/${album.id}`}
-                  className="group border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-3 transition hover:border-[var(--accent)]"
-                >
-                  <div className="relative w-full overflow-hidden border border-[color:var(--border)] bg-[#0b0d12] pb-[100%]">
-                    {album.image ? (
-                      <img
-                        src={album.image}
-                        alt={`${album.name} cover`}
-                        className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-[1.02]"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                        No art
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 space-y-1">
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
+          {!trendingLoading && trendingTail.length > 0 && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 16,
+              }}
+            >
+              {trendingTail.map((album, i) => (
+                <Link key={album.id} href={`/albums/${album.id}`}>
+                  <AlbumCover src={album.image} alt={`${album.name} cover`} />
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500 }}>
                       {album.name}
-                    </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {album.artists.join(", ")}
-                    </p>
-                    {typeof album.popularity === "number" && (
-                      <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                        Popularity {album.popularity}
-                      </p>
-                    )}
+                    </div>
+                    <div className="eyebrow" style={{ marginTop: 2 }}>
+                      #{i + 2} · {album.artists.join(", ")}
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -328,20 +257,115 @@ export default function Home() {
           )}
         </section>
 
-        <section className="border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-6 text-sm text-[var(--muted)]">
-          Follow other listeners, trade recommendations, and build your music
-          canon together.
-        </section>
-
-        <section className="flex flex-wrap items-center justify-between gap-4 border-t border-[color:var(--border)] pt-6 text-xs text-[var(--muted)]">
-          <span>Jukebox</span>
-          <div className="flex items-center gap-4 text-[10px] uppercase tracking-[0.3em]">
-            <span>About</span>
-            <span>Privacy</span>
-            <span>Support</span>
+        {/* ══════════ FEATURE TILES (secondary) ══════════ */}
+        <section style={{ padding: "48px 0", borderTop: "1px solid var(--ink)" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 40,
+            }}
+          >
+            {[
+              {
+                kicker: "Log your listens",
+                body:
+                  "Rate albums from 1 to 10 and build a personal listening history.",
+              },
+              {
+                kicker: "Curate ranked lists",
+                body: "Order your favorite records in ranked lists.",
+              },
+              {
+                kicker: "Pin your top reviews",
+                body:
+                  "Showcase the reviews that define your taste on your profile.",
+              },
+            ].map((f) => (
+              <div
+                key={f.kicker}
+                style={{
+                  borderTop: "1px solid var(--line-strong)",
+                  paddingTop: 18,
+                }}
+              >
+                <div className="eyebrow" style={{ color: "var(--muted-strong)" }}>
+                  {f.kicker}
+                </div>
+                <p
+                  className="pull"
+                  style={{
+                    fontSize: 22,
+                    marginTop: 12,
+                    color: "var(--ink)",
+                  }}
+                >
+                  {f.body}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
+
+        {/* ══════════ FEATURED (pick of the week, editorial treatment) ══════════ */}
+        <section style={{ padding: "48px 0", borderTop: "1px solid var(--ink)" }}>
+          <SectionHead
+            title="Featured review"
+            emph="review"
+            count={pick ? `Top of this week · ${pick.artists.join(", ")}` : ""}
+          />
+          {pick && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "200px 1fr",
+                gap: 24,
+                paddingTop: 8,
+              }}
+            >
+              <AlbumCover src={pick.image} alt={`${pick.name} cover`} />
+              <div>
+                <p
+                  className="pull"
+                  style={{ fontSize: 26, color: "var(--ink)" }}
+                >
+                  &ldquo;The record of the week. A slow, cavernous listen that
+                  keeps revealing itself.&rdquo;
+                </p>
+                <div
+                  className="eyebrow"
+                  style={{
+                    marginTop: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span>@jukebox · editorial</span>
+                  <span
+                    style={{
+                      width: 3,
+                      height: 3,
+                      background: "var(--muted)",
+                    }}
+                  />
+                  <span>
+                    {pick.name} — {pick.artists.join(", ")}
+                  </span>
+                  <span
+                    style={{
+                      width: 3,
+                      height: 3,
+                      background: "var(--muted)",
+                    }}
+                  />
+                  <Stars value={4.5} />
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       </main>
-    </div>
+    </Shell>
   );
 }

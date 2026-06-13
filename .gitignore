@@ -34,5 +34,10 @@ Thumbs.db
 
 .md
 
+.claude
+.prismo
+.claudeignore
+.cursorignore
+
 # Local scratch
 backend/temp_pgparse.js
