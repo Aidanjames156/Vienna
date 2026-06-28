@@ -60,6 +60,8 @@ export function Shell({
       return Math.floor((diff + start.getDay()) / 7) + 1;
     })();
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:4000";
+
   const handle = user ? `@${user.display_name || user.spotify_id}` : "@guest";
   const metaRight =
     user && typeof reviewCount === "number"
@@ -114,7 +116,21 @@ export function Shell({
               Jukebox
             </Link>
             <div className="eyebrow" style={{ textAlign: "right" }}>
-              <b style={{ color: "var(--ink)", fontWeight: 500 }}>{metaRight}</b>
+              {user ? (
+                <b style={{ color: "var(--ink)", fontWeight: 500 }}>{metaRight}</b>
+              ) : (
+                <a
+                  href={`${apiUrl}/auth/spotify`}
+                  style={{
+                    color: "var(--ink)",
+                    fontWeight: 500,
+                    borderBottom: "1px solid var(--ink)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {metaRight}
+                </a>
+              )}
             </div>
           </div>
         </div>
