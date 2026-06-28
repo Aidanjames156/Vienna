@@ -156,23 +156,16 @@ export default function ProfilePage() {
       .filter((genre) => genre.length > 0);
   }, [genresInput]);
 
-  // pinned first (most recently pinned), filled to three with highest-rated
+  // only reviews the user has actually pinned, most recently pinned first
   const pinnedColumns = useMemo(() => {
-    const pinned = reviews
+    return reviews
       .filter((review) => review.is_pinned)
       .sort((a, b) => {
         const aTime = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
         const bTime = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
         return bTime - aTime;
-      });
-    if (pinned.length >= 3) {
-      return pinned.slice(0, 3);
-    }
-    const filler = reviews
-      .filter((review) => !review.is_pinned)
-      .sort((a, b) => b.rating - a.rating)
-      .slice(0, 3 - pinned.length);
-    return [...pinned, ...filler];
+      })
+      .slice(0, 3);
   }, [reviews]);
 
   const recentReviews = useMemo(
@@ -2076,10 +2069,7 @@ export default function ProfilePage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: `repeat(${Math.min(
-                      pinnedColumns.length,
-                      3
-                    )}, 1fr)`,
+                    gridTemplateColumns: "repeat(3, 1fr)",
                     gap: 32,
                   }}
                 >
@@ -2097,7 +2087,6 @@ export default function ProfilePage() {
                           <AlbumCover
                             src={album?.image}
                             alt={album?.name || "Album"}
-                            ratio="4/3"
                           />
                         </Link>
                         <div
@@ -2131,12 +2120,10 @@ export default function ProfilePage() {
                             marginTop: 8,
                           }}
                         >
-                          <span>{review.is_pinned ? "Pinned" : "Top rated"}</span>
+                          <span>Pinned</span>
                           <button
                             type="button"
-                            onClick={() =>
-                              handleReviewPin(review.id, !review.is_pinned)
-                            }
+                            onClick={() => handleReviewPin(review.id, false)}
                             disabled={reviewPinning === review.id}
                             className="eyebrow"
                             style={{
@@ -2145,11 +2132,7 @@ export default function ProfilePage() {
                               color: "var(--ink)",
                             }}
                           >
-                            {reviewPinning === review.id
-                              ? "Saving…"
-                              : review.is_pinned
-                                ? "Unpin"
-                                : "Pin →"}
+                            {reviewPinning === review.id ? "Saving…" : "Unpin"}
                           </button>
                         </div>
                       </article>
