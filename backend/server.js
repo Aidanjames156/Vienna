@@ -22,6 +22,7 @@ const {
   refreshAccessToken,
   fetchSpotifyProfile,
   fetchSpotifyJson,
+  fetchTrackPreviewUrl,
 } = require('./spotify');
 
 const app = express();
@@ -46,10 +47,14 @@ const albumCache = new Map();
 const artistCache = new Map();
 const artistSearchCache = new Map();
 const trendingCache = new Map();
+const trackPreviewCache = new Map();
 const searchCacheTtlMs = 60_000;
 const albumCacheTtlMs = 5 * 60_000;
 const artistCacheTtlMs = 5 * 60_000;
 const trendingCacheTtlMs = 5 * 60_000;
+// Preview MP3 URLs are stable; cache them for a day. Failures are cached briefly
+// (see getTrackPreviewUrl) so a flaky embed fetch doesn't get hammered per request.
+const trackPreviewCacheTtlMs = 24 * 60 * 60_000;
 const cacheMaxEntries = 500;
 
 app.use(
@@ -139,6 +144,53 @@ function setCached(map, key, value, ttlMs) {
 
 function isValidSpotifyId(value) {
   return /^[A-Za-z0-9]{22}$/.test(value);
+}
+
+// Resolve a track's preview MP3 via the embed-page fallback, with caching of
+// both hits and misses. The cached value is wrapped as `{ url }` so that a
+// null (no preview) is distinguishable from a cache miss.
+async function getTrackPreviewUrl(trackId) {
+  if (!isValidSpotifyId(trackId)) {
+    return null;
+  }
+  const cached = getCached(trackPreviewCache, trackId);
+  if (cached) {
+    return cached.url;
+  }
+  try {
+    const url = await fetchTrackPreviewUrl(trackId);
+    setCached(trackPreviewCache, trackId, { url }, trackPreviewCacheTtlMs);
+    return url;
+  } catch (err) {
+    // Cache the failure briefly so a flaky embed fetch isn't retried per request.
+    setCached(trackPreviewCache, trackId, { url: null }, 60_000);
+    return null;
+  }
+}
+
+// Fill in `preview_url` for tracks the Spotify API returned as null, using a
+// small worker pool so a 50-track album doesn't fire 50 requests at once.
+async function enrichTracksWithPreviews(tracks) {
+  const missing = (tracks || []).filter(
+    (track) => track && !track.preview_url && isValidSpotifyId(track.id)
+  );
+  if (missing.length === 0) {
+    return;
+  }
+  const concurrency = 6;
+  let index = 0;
+  async function worker() {
+    while (index < missing.length) {
+      const track = missing[index++];
+      const url = await getTrackPreviewUrl(track.id);
+      if (url) {
+        track.preview_url = url;
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, missing.length) }, () => worker())
+  );
 }
 
 const maxListTags = 8;
@@ -1086,6 +1138,10 @@ app.get('/spotify/albums/:id', rateLimit, async (req, res) => {
         preview_url: track.preview_url,
       })) || [],
     };
+
+    // Spotify's API returns preview_url: null since the late-2024 deprecation;
+    // recover previews from the embed page before caching the album.
+    await enrichTracksWithPreviews(album.tracks);
 
     const payload = { album };
     setCached(albumCache, cacheId, payload, albumCacheTtlMs);

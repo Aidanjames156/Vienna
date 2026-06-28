@@ -143,6 +143,36 @@ async function fetchSpotifyJson(accessToken, url) {
   return response.json();
 }
 
+// Spotify removed `preview_url` from the Web API in late 2024, but the public
+// embed page still exposes a 30s preview MP3. Scrape it as a fallback for tracks
+// whose API `preview_url` is null. Undocumented, so it may break if the embed
+// page format changes — callers should treat a null result as "no preview".
+async function fetchTrackPreviewUrl(trackId) {
+  const response = await fetch(`https://open.spotify.com/embed/track/${trackId}`, {
+    headers: {
+      // A browser-like UA avoids the occasional bot-challenge response.
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Spotify embed request failed: ${response.status}`);
+  }
+
+  const html = await response.text();
+  let url = null;
+  const jsonMatch = html.match(/"audioPreview"\s*:\s*\{\s*"url"\s*:\s*"([^"]+)"/);
+  if (jsonMatch) {
+    url = jsonMatch[1];
+  } else {
+    const rawMatch = html.match(/https:\\?\/\\?\/p\.scdn\.co\\?\/mp3-preview\\?\/[A-Za-z0-9]+/);
+    url = rawMatch ? rawMatch[0] : null;
+  }
+
+  return url ? url.replace(/\\\//g, '/') : null;
+}
+
 module.exports = {
   getAuthorizeUrl,
   exchangeCodeForToken,
@@ -150,4 +180,5 @@ module.exports = {
   refreshAccessToken,
   fetchSpotifyProfile,
   fetchSpotifyJson,
+  fetchTrackPreviewUrl,
 };
