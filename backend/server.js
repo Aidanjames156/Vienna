@@ -657,7 +657,7 @@ app.patch('/me/profile', requireAuth, async (req, res) => {
       .map((value) => value.trim())
       .filter((value) => value.length > 0);
 
-    if (albumIds.length > 3) {
+    if (albumIds.length > 4) {
       return res.status(400).json({ error: 'favorite_album_ids_too_many' });
     }
 

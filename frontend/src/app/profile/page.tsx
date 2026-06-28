@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { SectionHead } from "@/components/SectionHead";
 import { AlbumCover } from "@/components/AlbumCover";
@@ -117,6 +117,7 @@ export default function ProfilePage() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [genresInput, setGenresInput] = useState("");
@@ -722,8 +723,8 @@ export default function ProfilePage() {
       return;
     }
 
-    if (favoriteAlbumIds.length > 3) {
-      setProfileError("Pick up to 3 favorite albums.");
+    if (favoriteAlbumIds.length > 4) {
+      setProfileError("Pick up to 4 favorite albums.");
       return;
     }
 
@@ -832,8 +833,8 @@ export default function ProfilePage() {
     if (favoriteAlbumIds.includes(album.id)) {
       return;
     }
-    if (favoriteAlbumIds.length >= 3) {
-      setFavoriteError("You can only pick 3 favorite albums.");
+    if (favoriteAlbumIds.length >= 4) {
+      setFavoriteError("You can only pick 4 favorite albums.");
       return;
     }
     setFavoriteAlbumIds((prev) => [...prev, album.id]);
@@ -1217,55 +1218,75 @@ export default function ProfilePage() {
               }}
             >
               <div>
+                <div className="eyebrow" style={{ marginBottom: 16 }}>
+                  @{user.spotify_id}
+                </div>
                 <div
-                  className="eyebrow"
                   style={{
-                    marginBottom: 16,
                     display: "flex",
-                    alignItems: "center",
-                    gap: 10,
+                    gap: 72,
+                    alignItems: "flex-end",
                   }}
                 >
-                  {avatarUrl && (
-                    <span
-                      style={{
-                        width: 28,
-                        height: 28,
-                        overflow: "hidden",
-                        display: "inline-block",
-                      }}
-                    >
+                  <div
+                    style={{
+                      flexShrink: 0,
+                      width: "clamp(120px, 11vw, 184px)",
+                      height: "clamp(120px, 11vw, 184px)",
+                      overflow: "hidden",
+                      background: "var(--bg-strong)",
+                      border: "1px solid var(--ink)",
+                    }}
+                  >
+                    {avatarUrl ? (
                       <img
                         src={avatarUrl}
                         alt="Profile avatar"
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
-                    </span>
-                  )}
-                  <span>@{user.spotify_id}</span>
+                    ) : (
+                      <div
+                        className="display"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 72,
+                          fontStyle: "italic",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {avatarInitial}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <h1
+                      className="display"
+                      style={{
+                        fontSize: "clamp(72px, 9vw, 128px)",
+                        lineHeight: 0.9,
+                        letterSpacing: "-0.025em",
+                        margin: 0,
+                      }}
+                    >
+                      {profileDisplayName.split(" ").map((word, i, arr) => (
+                        <span key={i}>
+                          {i === arr.length - 1 && arr.length > 1 ? (
+                            <em>{word}.</em>
+                          ) : (
+                            <>
+                              {word}
+                              {i < arr.length - 1 ? <br /> : null}
+                            </>
+                          )}
+                        </span>
+                      ))}
+                    </h1>
+                  </div>
                 </div>
-                <h1
-                  className="display"
-                  style={{
-                    fontSize: "clamp(72px, 9vw, 128px)",
-                    lineHeight: 0.9,
-                    letterSpacing: "-0.025em",
-                    margin: 0,
-                  }}
-                >
-                  {profileDisplayName.split(" ").map((word, i, arr) => (
-                    <span key={i}>
-                      {i === arr.length - 1 && arr.length > 1 ? (
-                        <em>{word}.</em>
-                      ) : (
-                        <>
-                          {word}
-                          {i < arr.length - 1 ? <br /> : null}
-                        </>
-                      )}
-                    </span>
-                  ))}
-                </h1>
                 <div style={{ display: "flex", gap: 20, marginTop: 20, alignItems: "center" }}>
                   <button
                     type="button"
@@ -1350,13 +1371,21 @@ export default function ProfilePage() {
                         <div className="eyebrow" style={{ marginBottom: 8 }}>
                           Profile photo
                         </div>
-                        <div
+                        <button
+                          type="button"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={avatarUploading}
+                          aria-label="Change profile photo"
                           style={{
                             width: 120,
                             height: 120,
                             overflow: "hidden",
                             background: "var(--bg-strong)",
                             marginBottom: 10,
+                            padding: 0,
+                            border: "1px solid var(--line-strong)",
+                            cursor: avatarUploading ? "default" : "pointer",
+                            display: "block",
                           }}
                         >
                           {avatarUrl ? (
@@ -1386,19 +1415,30 @@ export default function ProfilePage() {
                               {avatarInitial}
                             </div>
                           )}
-                        </div>
+                        </button>
                         <input
+                          ref={avatarInputRef}
                           type="file"
                           accept="image/*"
                           onChange={handleAvatarUpload}
                           disabled={avatarUploading}
-                          style={{ fontSize: 12 }}
+                          style={{ display: "none" }}
                         />
-                        {avatarUploading && (
-                          <div className="eyebrow" style={{ marginTop: 6 }}>
-                            Uploading…
-                          </div>
-                        )}
+                        <button
+                          type="button"
+                          className="text-btn"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={avatarUploading}
+                        >
+                          {avatarUploading ? (
+                            "Uploading…"
+                          ) : (
+                            <>
+                              {avatarUrl ? "Change photo" : "Upload photo"}
+                              <span aria-hidden="true">→</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                       <div>
                         <div className="eyebrow" style={{ marginBottom: 8 }}>
@@ -1605,7 +1645,7 @@ export default function ProfilePage() {
 
                       <div>
                         <div className="eyebrow" style={{ marginBottom: 8 }}>
-                          Top albums (up to 3)
+                          Top albums (up to 4)
                         </div>
                         <input
                           className="field-line"
@@ -1693,7 +1733,7 @@ export default function ProfilePage() {
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "repeat(3, 1fr)",
+                              gridTemplateColumns: "repeat(4, 1fr)",
                               gap: 12,
                               marginTop: 12,
                             }}
