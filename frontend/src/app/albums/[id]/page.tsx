@@ -379,7 +379,7 @@ export default function AlbumPage() {
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         if (data?.error === "pinned_limit") {
-          setReviewActionError("You can only pin 1 review.");
+          setReviewActionError("You can only pin 3 reviews.");
           return;
         }
         setReviewActionError("Could not update pinned reviews.");

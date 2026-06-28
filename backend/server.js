@@ -1314,7 +1314,7 @@ app.patch('/reviews/:id', requireAuth, async (req, res) => {
         [req.user.sub]
       );
       const pinnedCount = parseInt(pinnedCountResult.rows[0]?.count || '0', 10);
-      if (pinnedCount >= 1) {
+      if (pinnedCount >= 3) {
         return res.status(400).json({ error: 'pinned_limit' });
       }
       updates.push(`is_pinned = $${values.length + 1}`);

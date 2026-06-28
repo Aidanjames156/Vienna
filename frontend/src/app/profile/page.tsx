@@ -978,7 +978,7 @@ export default function ProfilePage() {
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         if (data?.error === "pinned_limit") {
-          setReviewActionError("You can only pin 1 review.");
+          setReviewActionError("You can only pin 3 reviews.");
           return;
         }
         setReviewActionError("Could not update pinned reviews.");
@@ -2156,6 +2156,12 @@ export default function ProfilePage() {
                 </div>
               )}
 
+              {reviewActionError && (
+                <div className="note" style={{ marginBottom: 20 }}>
+                  {reviewActionError}
+                </div>
+              )}
+
               {!loading && reviews.length === 0 && (
                 <p className="pull" style={{ fontSize: 20, color: "var(--muted)" }}>
                   No reviews yet.{" "}
@@ -2256,6 +2262,27 @@ export default function ProfilePage() {
                           <button
                             type="button"
                             onClick={() =>
+                              handleReviewPin(review.id, !review.is_pinned)
+                            }
+                            disabled={reviewPinning === review.id}
+                            className="eyebrow"
+                            style={{
+                              cursor: "pointer",
+                              borderBottom: "1px solid var(--ink)",
+                              color: review.is_pinned
+                                ? "var(--accent)"
+                                : "var(--ink)",
+                            }}
+                          >
+                            {reviewPinning === review.id
+                              ? "Saving…"
+                              : review.is_pinned
+                                ? "Unpin"
+                                : "Pin →"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
                               isEditing
                                 ? setEditingReviewId(null)
                                 : startEditReview(review)
@@ -2295,12 +2322,12 @@ export default function ProfilePage() {
                           }}
                         >
                           <div
-                            style={{ display: "flex", alignItems: "center", gap: 12 }}
+                            style={{ display: "flex", alignItems: "center", gap: 14 }}
                           >
                             <span className="eyebrow">Rating</span>
                             <select
-                              className="input"
-                              style={{ width: 80 }}
+                              className="field-line"
+                              style={{ fontSize: 18, paddingRight: 24 }}
                               value={editRatingValue}
                               onChange={(event) =>
                                 setEditRatingValue(event.target.value)
@@ -2315,28 +2342,41 @@ export default function ProfilePage() {
                               ))}
                             </select>
                             <span className="eyebrow">/ 10</span>
+                            <Stars
+                              value={rating10ToStars(Number(editRatingValue))}
+                              size={18}
+                            />
                           </div>
                           <textarea
-                            className="input"
-                            style={{ minHeight: 90 }}
+                            className="field-line"
+                            style={{ width: "100%", minHeight: 64, resize: "vertical" }}
+                            placeholder="Write your review (optional)"
                             value={editBodyValue}
                             onChange={(event) => setEditBodyValue(event.target.value)}
                           />
                           {reviewActionError && (
                             <div className="note">{reviewActionError}</div>
                           )}
-                          <div style={{ display: "flex", gap: 10 }}>
+                          <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
                             <button
                               type="button"
-                              className="btn primary sm"
+                              className="text-btn"
                               onClick={() => handleReviewUpdate(review.id)}
                               disabled={reviewSaving}
                             >
-                              {reviewSaving ? "Saving…" : "Save"}
+                              {reviewSaving ? (
+                                "Saving…"
+                              ) : (
+                                <>
+                                  Save changes
+                                  <span aria-hidden="true">→</span>
+                                </>
+                              )}
                             </button>
                             <button
                               type="button"
-                              className="btn sm"
+                              className="text-btn"
+                              style={{ color: "var(--muted)" }}
                               onClick={() => setEditingReviewId(null)}
                               disabled={reviewSaving}
                             >
