@@ -4,6 +4,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Shell } from "@/components/Shell";
+import { SectionHead } from "@/components/SectionHead";
+import { AlbumCover } from "@/components/AlbumCover";
 
 type User = {
   id: number;
@@ -838,441 +841,562 @@ export default function ListPage() {
     return date.toLocaleDateString();
   }
 
+  async function handleLogout() {
+    await fetch(`${apiUrl}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    setUser(null);
+  }
+
   return (
-    <div className="min-h-screen px-4 py-10 text-[color:var(--foreground)]">
-      <main className="mx-auto w-full max-w-6xl space-y-8">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--border)] pb-6">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-[var(--muted)]">
-              Jukebox
-            </p>
-            {editingTitle ? (
-              <div className="mt-2 space-y-2">
-                <input
-                  className="w-full max-w-md rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                  value={titleDraft}
-                  onChange={(event) => setTitleDraft(event.target.value)}
-                />
-                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                  <button
-                    type="button"
-                    className="rounded-none bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-                    onClick={handleTitleSave}
-                    disabled={titleSaving}
-                  >
-                    {titleSaving ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    className="border border-[color:var(--border)] px-3 py-1 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                    onClick={handleTitleCancel}
-                    disabled={titleSaving}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {titleError && (
-                  <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                    {titleError}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-mono text-2xl font-semibold tracking-tight">
-                  {list?.title || "Album list"}
-                </h1>
-                <button
-                  type="button"
-                  className="border border-[color:var(--border)] px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--muted)] transition hover:border-[var(--accent)]"
-                  onClick={() => setEditingTitle(true)}
-                >
-                  Edit
-                </button>
-              </div>
-            )}
-            {list?.description && (
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                {list.description}
-              </p>
-            )}
-            {editingTags ? (
-              <div className="mt-3 space-y-2">
-                <input
-                  className="w-full max-w-lg rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                  value={tagsDraft}
-                  onChange={(event) => setTagsDraft(event.target.value)}
-                  placeholder="Tags (comma separated)"
-                />
-                <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                  <button
-                    type="button"
-                    className="rounded-none bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-                    onClick={handleTagsSave}
-                    disabled={tagsSaving}
-                  >
-                    {tagsSaving ? "Saving..." : "Save tags"}
-                  </button>
-                  <button
-                    type="button"
-                    className="border border-[color:var(--border)] px-3 py-1 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                    onClick={handleTagsCancel}
-                    disabled={tagsSaving}
-                  >
-                    Cancel
-                  </button>
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                    Up to 8 tags
-                  </span>
-                </div>
-                {tagsError && (
-                  <div className="border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                    {tagsError}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                {list?.tags && list.tags.length > 0 ? (
-                  list.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="border border-[color:var(--border)] px-2 py-1"
-                    >
-                      #{tag}
-                    </span>
-                  ))
-                ) : (
-                  <span>No tags yet.</span>
-                )}
-                <button
-                  type="button"
-                  className="border border-[color:var(--border)] px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-[var(--foreground)] transition hover:border-[var(--accent)]"
-                  onClick={() => setEditingTags(true)}
-                >
-                  Edit tags
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
-            <Link
-              href="/profile"
-              className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-            >
-              Profile
-            </Link>
-            <Link
-              href="/search"
-              className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)]"
-            >
-              Search
-            </Link>
-            <button
-              type="button"
-              className="rounded-none border border-[color:var(--border)] px-4 py-2 text-[var(--foreground)] transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:text-[var(--muted-strong)]"
-              onClick={handleLikeToggle}
-              disabled={!list || likeSaving}
-            >
-              {likeSaving
-                ? "Saving..."
-                : list?.liked_by_me
-                ? "Unlike"
-                : "Like"}
-              <span className="ml-2 text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
-                {list?.likes_count ?? 0} like
-                {(list?.likes_count ?? 0) === 1 ? "" : "s"}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="rounded-none border border-red-500/40 px-4 py-2 text-[var(--foreground)] transition hover:border-red-500 disabled:cursor-not-allowed disabled:text-red-300/60"
-              onClick={handleDeleteList}
-              disabled={listDeleting}
-            >
-              {listDeleting ? "Deleting..." : "Delete list"}
-            </button>
-          </div>
-        </header>
-
-        {!authChecked && (
-          <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
-            Checking session...
-          </div>
-        )}
-
-        {error && (
-          <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
-            {error}
-          </div>
-        )}
-        {listDeleteError && (
-          <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
-            {listDeleteError}
-          </div>
-        )}
-        {likeError && (
-          <div className="border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-200">
-            {likeError}
-          </div>
-        )}
-
-        {authChecked && !error && list && (
-          <section className="space-y-6">
-            <form
-              onSubmit={handleAddSubmit}
-              className="relative border border-[color:var(--border)] p-5"
-            >
-              <label className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                Add albums
-              </label>
-              <input
-                className="mt-2 w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                placeholder="Start typing an album name or paste a Spotify URL"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              {searching && (
-                <div className="mt-2 text-xs text-[var(--muted)]">
-                  Searching...
-                </div>
-              )}
-              {suggestionOpen && (
-                <div className="absolute left-5 right-5 top-full z-10 mt-2 border border-[color:var(--border)] bg-[color:var(--surface)]">
-                  {suggestions.map((album) => (
-                    <button
-                      key={album.id}
-                      type="button"
-                      className="flex w-full items-center gap-3 border-b border-[color:var(--border)] px-4 py-3 text-left text-sm text-[var(--foreground)] hover:bg-[color:var(--surface-strong)]"
-                      onClick={() => addAlbumToList(album.id)}
-                    >
-                      <div className="h-10 w-10 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[#0b0d12]">
-                        {album.image ? (
-                          <img
-                            src={album.image}
-                            alt={`${album.name} cover`}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : null}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold">{album.name}</p>
-                        <p className="text-xs text-[var(--muted)]">
-                          {album.artists.join(", ")}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {!suggestionOpen && query.trim().length > 1 && !searching && (
-                <div className="mt-2 text-xs text-[var(--muted)]">
-                  Keep typing or paste a Spotify album URL.
-                </div>
-              )}
-            {addError && (
-              <div className="mt-3 border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200">
-                {addError}
-              </div>
-            )}
-            {reorderError && (
-              <div className="mt-3 border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200">
-                {reorderError}
-              </div>
-            )}
-            {rankedError && (
-              <div className="mt-3 border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200">
-                {rankedError}
-              </div>
-            )}
-            <button
-              type="submit"
-              className="mt-4 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-              disabled={adding}
-            >
-                {adding ? "Adding..." : "Add album"}
-              </button>
-            </form>
-
-            <div className="flex flex-wrap items-center justify-between gap-4 border border-[color:var(--border)] px-4 py-3 text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] text-[var(--accent)]"
-                  checked={list.is_ranked}
-                  disabled={rankedSaving}
-                  onChange={(event) => handleRankedToggle(event.target.checked)}
-                />
-                Ranked list
-              </label>
-              <span className="text-[10px] text-[var(--muted-strong)]">
-                {list.is_ranked ? "Drag to reorder" : "Unranked list"}
-              </span>
+    <Shell user={user} onLogout={handleLogout}>
+      <main style={{ maxWidth: 1320, margin: "0 auto", padding: "0 40px" }}>
+        {error ? (
+          <section style={{ padding: "56px 0" }}>
+            <div className="note" style={{ maxWidth: 640 }}>
+              {error}
             </div>
+          </section>
+        ) : !list ? (
+          <section style={{ padding: "56px 0" }}>
+            <div className="eyebrow">Loading…</div>
+          </section>
+        ) : (
+          <>
+            {/* ══════════ HEAD ══════════ */}
+            <section style={{ padding: "56px 0 32px" }}>
+              <div className="eyebrow" style={{ marginBottom: 18 }}>
+                Your lists
+              </div>
 
-            <div className="space-y-4">
-              {list.items.length === 0 && (
-                <div className="border border-[color:var(--border)] p-6 text-sm text-[var(--muted)]">
-                  No albums yet. Start typing to add one.
+              {editingTitle ? (
+                <div style={{ display: "grid", gap: 12, maxWidth: 640 }}>
+                  <input
+                    className="field-line"
+                    style={{ width: "100%", fontSize: 28 }}
+                    value={titleDraft}
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                  />
+                  <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+                    <button
+                      type="button"
+                      className="text-btn"
+                      onClick={handleTitleSave}
+                      disabled={titleSaving}
+                    >
+                      {titleSaving ? (
+                        "Saving…"
+                      ) : (
+                        <>
+                          Save
+                          <span aria-hidden="true">→</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-btn"
+                      style={{ color: "var(--muted)" }}
+                      onClick={handleTitleCancel}
+                      disabled={titleSaving}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {titleError && <div className="note">{titleError}</div>}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 20,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <h1
+                    className="display"
+                    style={{ fontSize: "clamp(44px, 6vw, 88px)", margin: 0 }}
+                  >
+                    {list.title || "Untitled list"}
+                  </h1>
+                  <button
+                    type="button"
+                    className="eyebrow"
+                    onClick={() => setEditingTitle(true)}
+                    style={{
+                      cursor: "pointer",
+                      color: "var(--ink)",
+                      borderBottom: "1px solid var(--ink)",
+                    }}
+                  >
+                    Edit
+                  </button>
                 </div>
               )}
-              {list.items.map((item, index) => {
-                const album = albumMap[item.spotify_album_id];
-                const isDragging = draggingId === item.spotify_album_id;
-                const isDragOver = dragOverId === item.spotify_album_id;
-                return (
-                  <div
-                    key={item.spotify_album_id}
-                    className={`group flex flex-col gap-4 border border-[color:var(--border)] p-4 transition md:flex-row md:items-center ${
-                      isDragOver ? "border-[var(--accent)] bg-[color:var(--surface-strong)]" : ""
-                    } ${isDragging ? "opacity-70" : ""} ${
-                      list.is_ranked ? "cursor-grab" : ""
-                    }`}
-                    draggable={list.is_ranked && !reorderSaving}
-                    onDragStart={(event) =>
-                      handleDragStart(event, item.spotify_album_id)
-                    }
-                    onDragOver={(event) =>
-                      handleDragOver(event, item.spotify_album_id)
-                    }
-                    onDrop={(event) =>
-                      handleDrop(event, item.spotify_album_id)
-                    }
-                    onDragEnd={handleDragEnd}
-                  >
-                    <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                      {album?.image ? (
-                        <img
-                          src={album.image}
-                          alt={`${album.name} cover`}
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
+
+              {list.description && (
+                <p
+                  className="pull"
+                  style={{ fontSize: 22, marginTop: 20, maxWidth: 640 }}
+                >
+                  {list.description}
+                </p>
+              )}
+
+              {/* tags */}
+              {editingTags ? (
+                <div style={{ display: "grid", gap: 10, maxWidth: 640, marginTop: 20 }}>
+                  <input
+                    className="field-line"
+                    style={{ width: "100%" }}
+                    value={tagsDraft}
+                    onChange={(event) => setTagsDraft(event.target.value)}
+                    placeholder="Tags (comma separated)"
+                  />
+                  <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+                    <button
+                      type="button"
+                      className="text-btn"
+                      onClick={handleTagsSave}
+                      disabled={tagsSaving}
+                    >
+                      {tagsSaving ? (
+                        "Saving…"
                       ) : (
-                        <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-[10px] uppercase tracking-[0.3em] text-[var(--muted-strong)]">
-                          No art
-                        </div>
+                        <>
+                          Save tags
+                          <span aria-hidden="true">→</span>
+                        </>
                       )}
-                    </div>
-                    {list.is_ranked && (
-                      <div className="w-10 text-xs font-semibold text-[var(--muted-strong)]">
-                        #{index + 1}
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-[var(--foreground)]">
-                        {album?.name || "Unknown album"}
-                      </p>
-                      <p className="text-xs text-[var(--muted)]">
-                        {album?.artists?.join(", ") || item.spotify_album_id}
-                      </p>
-                    </div>
-                    {list.is_ranked && (
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-[var(--muted)] opacity-0 transition group-hover:opacity-100">
-                        <span
-                          className="cursor-grab border border-[color:var(--border)] px-2 py-1 transition group-active:cursor-grabbing"
-                          aria-hidden="true"
-                        >
-                          Drag
+                    </button>
+                    <button
+                      type="button"
+                      className="text-btn"
+                      style={{ color: "var(--muted)" }}
+                      onClick={handleTagsCancel}
+                      disabled={tagsSaving}
+                    >
+                      Cancel
+                    </button>
+                    <span className="eyebrow" style={{ color: "var(--muted)" }}>
+                      Up to 8 tags
+                    </span>
+                  </div>
+                  {tagsError && <div className="note">{tagsError}</div>}
+                </div>
+              ) : (
+                <div
+                  className="eyebrow"
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    marginTop: 20,
+                    alignItems: "center",
+                  }}
+                >
+                  {list.tags && list.tags.length > 0 ? (
+                    list.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        style={{
+                          border: "1px solid var(--line-strong)",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        #{tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span style={{ color: "var(--muted)" }}>No tags yet</span>
+                  )}
+                  <button
+                    type="button"
+                    className="eyebrow"
+                    onClick={() => setEditingTags(true)}
+                    style={{
+                      cursor: "pointer",
+                      color: "var(--ink)",
+                      borderBottom: "1px solid var(--ink)",
+                    }}
+                  >
+                    Edit tags
+                  </button>
+                </div>
+              )}
+
+              {/* meta actions */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 20,
+                  marginTop: 24,
+                  alignItems: "center",
+                }}
+              >
+                <button
+                  type="button"
+                  className="quiet-link"
+                  onClick={handleLikeToggle}
+                  disabled={likeSaving}
+                >
+                  {likeSaving
+                    ? "Saving…"
+                    : list.liked_by_me
+                      ? "Unlike"
+                      : "Like"}
+                  {` · ${list.likes_count ?? 0} like${
+                    (list.likes_count ?? 0) === 1 ? "" : "s"
+                  }`}
+                </button>
+                <button
+                  type="button"
+                  className="quiet-link"
+                  style={{ color: "var(--accent)" }}
+                  onClick={handleDeleteList}
+                  disabled={listDeleting}
+                >
+                  {listDeleting ? "Deleting…" : "Delete list"}
+                </button>
+              </div>
+
+              {(likeError || listDeleteError) && (
+                <div className="note" style={{ marginTop: 16, maxWidth: 640 }}>
+                  {likeError || listDeleteError}
+                </div>
+              )}
+            </section>
+
+            {/* ══════════ RECORDS ══════════ */}
+            <section style={{ padding: "48px 0", borderTop: "1px solid var(--ink)" }}>
+              <SectionHead
+                title="The records"
+                emph="records"
+                count={`${list.items.length} album${
+                  list.items.length === 1 ? "" : "s"
+                }${list.is_ranked ? " · ranked" : ""}`}
+              />
+
+              {/* add album */}
+              <form
+                onSubmit={handleAddSubmit}
+                style={{ position: "relative", maxWidth: 640 }}
+              >
+                <input
+                  className="field-line"
+                  style={{ width: "100%" }}
+                  placeholder="Search an album or paste a Spotify URL"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+                {searching && (
+                  <div className="eyebrow" style={{ marginTop: 6 }}>
+                    Searching…
+                  </div>
+                )}
+                {suggestionOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      top: "100%",
+                      zIndex: 10,
+                      marginTop: 8,
+                      border: "1px solid var(--ink)",
+                      borderBottom: 0,
+                      background: "var(--bg)",
+                    }}
+                  >
+                    {suggestions.map((album) => (
+                      <button
+                        key={album.id}
+                        type="button"
+                        onClick={() => addAlbumToList(album.id)}
+                        style={{
+                          display: "flex",
+                          width: "100%",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "8px 12px",
+                          borderBottom: "1px solid var(--line-strong)",
+                          background: "transparent",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span style={{ width: 40, flexShrink: 0 }}>
+                          <AlbumCover src={album.image} alt={`${album.name} cover`} />
                         </span>
-                        {reorderSaving && (
-                          <span className="text-[var(--muted-strong)]">
-                            Saving...
+                        <span style={{ minWidth: 0 }}>
+                          <span
+                            style={{ display: "block", fontSize: 13, fontWeight: 500 }}
+                          >
+                            {album.name}
+                          </span>
+                          <span className="eyebrow">{album.artists.join(", ")}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </form>
+              {addError && (
+                <div className="note" style={{ marginTop: 16, maxWidth: 640 }}>
+                  {addError}
+                </div>
+              )}
+
+              {/* ranked toggle */}
+              <button
+                type="button"
+                onClick={() => handleRankedToggle(!list.is_ranked)}
+                disabled={rankedSaving}
+                aria-pressed={list.is_ranked}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  background: "none",
+                  border: 0,
+                  padding: 0,
+                  cursor: "pointer",
+                  marginTop: 28,
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    flexShrink: 0,
+                    border: "1px solid var(--ink)",
+                    background: list.is_ranked ? "var(--accent)" : "transparent",
+                  }}
+                />
+                <span className="eyebrow">
+                  {rankedSaving
+                    ? "Saving…"
+                    : list.is_ranked
+                      ? "Ranked — drag to reorder"
+                      : "Ranked list"}
+                </span>
+              </button>
+              {(rankedError || reorderError) && (
+                <div className="note" style={{ marginTop: 16, maxWidth: 640 }}>
+                  {rankedError || reorderError}
+                </div>
+              )}
+
+              {/* items */}
+              {list.items.length === 0 ? (
+                <p
+                  className="pull"
+                  style={{ fontSize: 18, color: "var(--muted)", marginTop: 24 }}
+                >
+                  No albums yet. Search above to add one.
+                </p>
+              ) : (
+                <div style={{ display: "grid", gap: 0, marginTop: 24, maxWidth: 820 }}>
+                  {list.items.map((item, index) => {
+                    const album = albumMap[item.spotify_album_id];
+                    const isDragOver = dragOverId === item.spotify_album_id;
+                    const isDragging = draggingId === item.spotify_album_id;
+                    return (
+                      <div
+                        key={item.spotify_album_id}
+                        draggable={list.is_ranked && !reorderSaving}
+                        onDragStart={(event) =>
+                          handleDragStart(event, item.spotify_album_id)
+                        }
+                        onDragOver={(event) =>
+                          handleDragOver(event, item.spotify_album_id)
+                        }
+                        onDrop={(event) => handleDrop(event, item.spotify_album_id)}
+                        onDragEnd={handleDragEnd}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: list.is_ranked
+                            ? "28px 56px 1fr"
+                            : "56px 1fr",
+                          gap: 16,
+                          alignItems: "center",
+                          padding: "12px 8px",
+                          borderTop:
+                            index === 0
+                              ? "1px solid var(--ink)"
+                              : "1px solid var(--line)",
+                          borderBottom:
+                            index === list.items.length - 1
+                              ? "1px solid var(--ink)"
+                              : undefined,
+                          background: isDragOver ? "var(--accent-soft)" : undefined,
+                          opacity: isDragging ? 0.6 : 1,
+                          cursor: list.is_ranked ? "grab" : "default",
+                        }}
+                      >
+                        {list.is_ranked && (
+                          <span
+                            className="display"
+                            style={{ fontSize: 22, fontStyle: "italic" }}
+                          >
+                            {index + 1}
                           </span>
                         )}
+                        <span style={{ width: 56, flexShrink: 0 }}>
+                          <AlbumCover
+                            src={album?.image}
+                            alt={album?.name || "Album"}
+                          />
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <Link
+                            href={`/albums/${item.spotify_album_id}`}
+                            style={{
+                              display: "block",
+                              fontSize: 14,
+                              fontWeight: 500,
+                              color: "var(--ink)",
+                            }}
+                          >
+                            {album?.name || "Unknown album"}
+                          </Link>
+                          <span className="eyebrow">
+                            {album?.artists?.join(", ") || item.spotify_album_id}
+                          </span>
+                        </span>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              )}
+              {reorderSaving && (
+                <div className="eyebrow" style={{ marginTop: 12 }}>
+                  Saving order…
+                </div>
+              )}
+            </section>
 
-            <section className="space-y-4 border border-[color:var(--border)] p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-[var(--foreground)]">
-                  Comments
-                </h2>
-                <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
-                  {comments.length} total
-                </span>
-              </div>
+            {/* ══════════ COMMENTS ══════════ */}
+            <section style={{ padding: "48px 0", borderTop: "1px solid var(--ink)" }}>
+              <SectionHead
+                title="Comments"
+                emph="Comments"
+                count={`${comments.length} total`}
+              />
 
-              <form onSubmit={handleCommentSubmit} className="space-y-3">
+              <form
+                onSubmit={handleCommentSubmit}
+                style={{ display: "grid", gap: 14, maxWidth: 640 }}
+              >
                 <textarea
-                  className="min-h-[100px] w-full rounded-none border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)]"
-                  placeholder="Leave a comment about this list..."
+                  className="field-line"
+                  style={{ width: "100%", minHeight: 80, resize: "vertical" }}
+                  placeholder="Leave a comment about this list…"
                   value={commentDraft}
                   onChange={(event) => setCommentDraft(event.target.value)}
                 />
-                <button
-                  type="submit"
-                  className="rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#0a140c] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[color:var(--surface-strong)] disabled:text-[var(--muted)]"
-                  disabled={commentSubmitting}
-                >
-                  {commentSubmitting ? "Posting..." : "Post comment"}
-                </button>
+                <div>
+                  <button
+                    type="submit"
+                    className="text-btn"
+                    disabled={commentSubmitting}
+                  >
+                    {commentSubmitting ? (
+                      "Posting…"
+                    ) : (
+                      <>
+                        Post comment
+                        <span aria-hidden="true">→</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </form>
 
               {commentsError && (
-                <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200">
+                <div className="note" style={{ marginTop: 16, maxWidth: 640 }}>
                   {commentsError}
                 </div>
               )}
-
               {commentsLoading && (
-                <div className="text-xs text-[var(--muted)]">
-                  Loading comments...
+                <div className="eyebrow" style={{ marginTop: 16 }}>
+                  Loading comments…
                 </div>
               )}
-
               {!commentsLoading && comments.length === 0 && (
-                <div className="text-xs text-[var(--muted)]">
+                <p
+                  className="pull"
+                  style={{ fontSize: 18, color: "var(--muted)", marginTop: 16 }}
+                >
                   No comments yet.
-                </div>
+                </p>
               )}
 
-              <div className="space-y-3">
-                {comments.map((comment) => (
-                  <div
+              <div style={{ display: "grid", gap: 0, marginTop: 24, maxWidth: 720 }}>
+                {comments.map((comment, i) => (
+                  <article
                     key={comment.id}
-                    className="border border-[color:var(--border)] px-4 py-3"
+                    style={{
+                      padding: "20px 0",
+                      borderTop:
+                        i === 0
+                          ? "1px solid var(--ink)"
+                          : "1px solid var(--line)",
+                    }}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-strong)]">
-                          {comment.user.avatar_url ? (
-                            <img
-                              src={comment.user.avatar_url}
-                              alt={comment.user.display_name || comment.user.spotify_id}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-[var(--muted-strong)]">
-                              {(comment.user.display_name || comment.user.spotify_id || "U")
-                                .charAt(0)
-                                .toUpperCase()}
-                            </div>
-                          )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <span
+                        style={{
+                          width: 36,
+                          height: 36,
+                          flexShrink: 0,
+                          overflow: "hidden",
+                          background: "var(--bg-strong)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {comment.user.avatar_url ? (
+                          <img
+                            src={comment.user.avatar_url}
+                            alt={comment.user.display_name || comment.user.spotify_id}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <span
+                            className="display"
+                            style={{ fontStyle: "italic", color: "var(--muted)" }}
+                          >
+                            {(comment.user.display_name || comment.user.spotify_id || "U")
+                              .charAt(0)
+                              .toUpperCase()}
+                          </span>
+                        )}
+                      </span>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 500 }}>
+                          {comment.user.display_name || comment.user.spotify_id}
                         </div>
-                        <div>
-                          <p className="text-xs font-semibold text-[var(--foreground)]">
-                            {comment.user.display_name || comment.user.spotify_id}
-                          </p>
-                          <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
-                            {formatDate(comment.created_at)}
-                          </p>
-                        </div>
+                        <div className="eyebrow">{formatDate(comment.created_at)}</div>
                       </div>
                     </div>
-                    <p className="mt-3 text-sm text-[var(--foreground)]">
+                    <p
+                      className="pull"
+                      style={{ fontSize: 18, marginTop: 10, color: "var(--ink)" }}
+                    >
                       {comment.body}
                     </p>
-                  </div>
+                  </article>
                 ))}
               </div>
             </section>
-          </section>
+          </>
         )}
       </main>
-    </div>
+    </Shell>
   );
 }

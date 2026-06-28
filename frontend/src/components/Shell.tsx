@@ -27,7 +27,7 @@ type TabDef = { href: string; label: string; num: string; matches?: (p: string) 
 
 const TABS: TabDef[] = [
   { href: "/", label: "Home", num: "01", matches: (p) => p === "/" },
-  { href: "/search", label: "Search", num: "02", matches: (p) => p.startsWith("/search") || p.startsWith("/lists") },
+  { href: "/search", label: "Search", num: "02", matches: (p) => p.startsWith("/search") },
   { href: "/profile", label: "Profile", num: "03", matches: (p) => p.startsWith("/profile") },
 ];
 
