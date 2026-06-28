@@ -1405,7 +1405,8 @@ export default function ProfilePage() {
                           Display name
                         </div>
                         <input
-                          className="input"
+                          className="field-line"
+                          style={{ width: "100%" }}
                           value={displayName}
                           onChange={(event) => setDisplayName(event.target.value)}
                           placeholder="Your display name"
@@ -1419,8 +1420,8 @@ export default function ProfilePage() {
                           Bio
                         </div>
                         <textarea
-                          className="input"
-                          style={{ minHeight: 110 }}
+                          className="field-line"
+                          style={{ width: "100%", minHeight: 110, resize: "vertical" }}
                           placeholder="Tell people about your taste."
                           value={bio}
                           onChange={(event) => setBio(event.target.value)}
@@ -1432,7 +1433,8 @@ export default function ProfilePage() {
                           Favorite genres (comma-separated, up to 10)
                         </div>
                         <input
-                          className="input"
+                          className="field-line"
+                          style={{ width: "100%" }}
                           placeholder="R&B, Soul, Jazz"
                           value={genresInput}
                           onChange={(event) => setGenresInput(event.target.value)}
@@ -1467,7 +1469,8 @@ export default function ProfilePage() {
                           Favorite artists (up to 5)
                         </div>
                         <input
-                          className="input"
+                          className="field-line"
+                          style={{ width: "100%" }}
                           placeholder="Search for favorite artists"
                           value={favoriteArtistQuery}
                           onChange={(event) =>
@@ -1605,7 +1608,8 @@ export default function ProfilePage() {
                           Top albums (up to 3)
                         </div>
                         <input
-                          className="input"
+                          className="field-line"
+                          style={{ width: "100%" }}
                           placeholder="Search for favorite albums"
                           value={favoriteQuery}
                           onChange={(event) => setFavoriteQuery(event.target.value)}
@@ -1737,13 +1741,21 @@ export default function ProfilePage() {
 
                   {profileError && <div className="note">{profileError}</div>}
 
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button type="submit" className="btn primary" disabled={profileSaving}>
-                      {profileSaving ? "Saving…" : "Save profile"}
+                  <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+                    <button type="submit" className="text-btn" disabled={profileSaving}>
+                      {profileSaving ? (
+                        "Saving…"
+                      ) : (
+                        <>
+                          Save profile
+                          <span aria-hidden="true">→</span>
+                        </>
+                      )}
                     </button>
                     <button
                       type="button"
-                      className="btn"
+                      className="text-btn"
+                      style={{ color: "var(--muted)" }}
                       onClick={() => handleEditToggle(false)}
                       disabled={profileSaving}
                     >
