@@ -40,10 +40,15 @@ services:
   frontend:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev"
+    # Run dev on webpack (not Turbopack): Turbopack's Rust file watcher can't
+    # detect edits over the Windows bind mount and ignores polling env vars,
+    # so hot reload breaks. webpack honors WATCHPACK_POLLING below.
+    command: sh -c "npm install && npm run dev -- --webpack"
     ports:
       - 3000:3000
     environment:
+      # Polling is required for file-change detection over the Windows bind mount;
+      # native fs events don't cross the host boundary.
       WATCHPACK_POLLING: "true"
     volumes:
       - ./frontend:/app

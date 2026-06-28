@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS reviews (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- A user may only review a given album once (they can edit the existing one).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_user_album
+  ON reviews (user_id, spotify_album_id);
+
 CREATE TABLE IF NOT EXISTS lists (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

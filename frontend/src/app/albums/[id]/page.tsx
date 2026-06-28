@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { SectionHead } from "@/components/SectionHead";
@@ -58,6 +58,25 @@ export default function AlbumPage() {
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState("8");
   const [bodyValue, setBodyValue] = useState("");
+
+  // In-app track preview playback
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
+
+  function togglePreview(trackId: string, url: string) {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (playingTrackId === trackId) {
+      audio.pause();
+      setPlayingTrackId(null);
+      return;
+    }
+
+    audio.src = url;
+    audio.play().catch(() => setPlayingTrackId(null));
+    setPlayingTrackId(trackId);
+  }
   const [submitting, setSubmitting] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
   const [editRatingValue, setEditRatingValue] = useState("8");
@@ -73,6 +92,11 @@ export default function AlbumPage() {
     const total = reviews.reduce((sum, review) => sum + review.rating, 0);
     return (total / reviews.length).toFixed(1);
   }, [reviews]);
+
+  const myReview = useMemo(
+    () => (user ? reviews.find((review) => review.user?.id === user.id) : undefined),
+    [reviews, user]
+  );
 
   const ratingDistribution = useMemo(() => {
     const buckets = Array.from({ length: 10 }, () => 0);
@@ -226,6 +250,13 @@ export default function AlbumPage() {
 
       if (response.status === 401) {
         setReviewError("Please sign in with Spotify to add a review.");
+        return;
+      }
+
+      if (response.status === 409) {
+        setReviewError(
+          "You've already reviewed this album. Edit your existing review below."
+        );
         return;
       }
 
@@ -634,18 +665,24 @@ export default function AlbumPage() {
                         {formatDuration(track.duration_ms)}
                       </span>
                       {track.preview_url ? (
-                        <a
-                          href={track.preview_url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            togglePreview(track.id, track.preview_url!)
+                          }
                           className="eyebrow"
                           style={{
                             color: "var(--ink)",
+                            background: "none",
+                            border: "none",
                             borderBottom: "1px solid var(--ink)",
+                            padding: 0,
+                            cursor: "pointer",
+                            font: "inherit",
                           }}
                         >
-                          Preview →
-                        </a>
+                          {playingTrackId === track.id ? "Pause ❚❚" : "Preview ▶"}
+                        </button>
                       ) : (
                         <span className="eyebrow" style={{ color: "var(--muted-2)" }}>
                           No preview
@@ -654,6 +691,11 @@ export default function AlbumPage() {
                     </div>
                   ))}
                 </div>
+                <audio
+                  ref={audioRef}
+                  onEnded={() => setPlayingTrackId(null)}
+                  style={{ display: "none" }}
+                />
               </section>
             )}
           </>
@@ -675,7 +717,31 @@ export default function AlbumPage() {
             />
 
             {/* compose */}
-            <form
+            {user && myReview ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  marginBottom: 40,
+                  paddingBottom: 32,
+                  borderBottom: "1px solid var(--line)",
+                }}
+              >
+                <div
+                  className="display"
+                  style={{ fontSize: 28 }}
+                >
+                  You&rsquo;ve <em>already</em> reviewed this album
+                </div>
+                <p
+                  className="eyebrow"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Edit or delete your review below ↓
+                </p>
+              </div>
+            ) : (
+              <form
               onSubmit={handleReviewSubmit}
               style={{
                 display: "grid",
@@ -744,6 +810,7 @@ export default function AlbumPage() {
                 )}
               </div>
             </form>
+            )}
 
             {/* list */}
             {reviewActionError && (

@@ -1243,6 +1243,9 @@ app.post('/albums/:id/reviews', requireAuth, async (req, res) => {
       },
     });
   } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'already_reviewed' });
+    }
     console.error(err);
     return res.status(500).json({ error: 'review_create_failed' });
   }
