@@ -868,12 +868,12 @@ export default function AlbumPage() {
                     </div>
 
                     {isEditing ? (
-                      <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 560 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ marginTop: 16, display: "grid", gap: 18, maxWidth: 560 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                           <span className="eyebrow">Rating</span>
                           <select
-                            className="input"
-                            style={{ width: 90 }}
+                            className="field-line"
+                            style={{ fontSize: 18, paddingRight: 24 }}
                             value={editRatingValue}
                             onChange={(event) =>
                               setEditRatingValue(event.target.value)
@@ -888,25 +888,38 @@ export default function AlbumPage() {
                             ))}
                           </select>
                           <span className="eyebrow">/ 10</span>
+                          <Stars
+                            value={rating10ToStars(Number(editRatingValue))}
+                            size={18}
+                          />
                         </div>
                         <textarea
-                          className="input"
-                          style={{ minHeight: 90 }}
+                          className="field-line"
+                          style={{ minHeight: 64, resize: "vertical" }}
+                          placeholder="Write your review (optional)"
                           value={editBodyValue}
                           onChange={(event) => setEditBodyValue(event.target.value)}
                         />
-                        <div style={{ display: "flex", gap: 10 }}>
+                        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
                           <button
                             type="button"
-                            className="btn primary sm"
+                            className="text-btn"
                             onClick={() => handleReviewUpdate(review.id)}
                             disabled={reviewSaving}
                           >
-                            {reviewSaving ? "Saving…" : "Save"}
+                            {reviewSaving ? (
+                              "Saving…"
+                            ) : (
+                              <>
+                                Save changes
+                                <span aria-hidden="true">→</span>
+                              </>
+                            )}
                           </button>
                           <button
                             type="button"
-                            className="btn sm"
+                            className="text-btn"
+                            style={{ color: "var(--muted)" }}
                             onClick={() => setEditingReviewId(null)}
                             disabled={reviewSaving}
                           >
