@@ -2538,7 +2538,8 @@ export default function ProfilePage() {
                     Find people
                   </div>
                   <input
-                    className="input"
+                    className="field-line"
+                    style={{ width: "100%" }}
                     placeholder="Search by name or Spotify ID"
                     value={followSearch}
                     onChange={(event) => setFollowSearch(event.target.value)}
@@ -2570,19 +2571,28 @@ export default function ProfilePage() {
                             person,
                             <button
                               type="button"
-                              className="btn sm"
+                              className="eyebrow"
                               onClick={() =>
                                 isFollowing
                                   ? handleUnfollowUser(person.id)
                                   : handleFollowUser(person.id)
                               }
                               disabled={followUpdatingId === person.id}
+                              style={{
+                                cursor: "pointer",
+                                color: isFollowing
+                                  ? "var(--muted)"
+                                  : "var(--ink)",
+                                borderBottom: isFollowing
+                                  ? "none"
+                                  : "1px solid var(--ink)",
+                              }}
                             >
                               {followUpdatingId === person.id
                                 ? "Saving…"
                                 : isFollowing
                                   ? "Unfollow"
-                                  : "Follow"}
+                                  : "Follow →"}
                             </button>
                           )}
                         </div>
@@ -2610,9 +2620,10 @@ export default function ProfilePage() {
                           person,
                           <button
                             type="button"
-                            className="btn sm"
+                            className="eyebrow"
                             onClick={() => handleUnfollowUser(person.id)}
                             disabled={followUpdatingId === person.id}
+                            style={{ cursor: "pointer", color: "var(--muted)" }}
                           >
                             {followUpdatingId === person.id
                               ? "Saving…"
@@ -2643,19 +2654,28 @@ export default function ProfilePage() {
                             person,
                             <button
                               type="button"
-                              className="btn sm"
+                              className="eyebrow"
                               onClick={() =>
                                 isFollowing
                                   ? handleUnfollowUser(person.id)
                                   : handleFollowUser(person.id)
                               }
                               disabled={followUpdatingId === person.id}
+                              style={{
+                                cursor: "pointer",
+                                color: isFollowing
+                                  ? "var(--muted)"
+                                  : "var(--ink)",
+                                borderBottom: isFollowing
+                                  ? "none"
+                                  : "1px solid var(--ink)",
+                              }}
                             >
                               {followUpdatingId === person.id
                                 ? "Saving…"
                                 : isFollowing
                                   ? "Unfollow"
-                                  : "Follow"}
+                                  : "Follow →"}
                             </button>
                           )}
                         </div>
